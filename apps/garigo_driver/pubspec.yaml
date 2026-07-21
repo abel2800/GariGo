@@ -1,0 +1,39 @@
+name: garigo_driver
+description: GariGo Driver — Ethiopia ride-hailing
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  gari_core:
+    path: ../../packages/gari_core
+  gari_api:
+    path: ../../packages/gari_api
+  dio: ^5.8.0+1
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.8.1
+  flutter_secure_storage: ^9.2.4
+  shared_preferences: ^2.5.3
+  flutter_animate: ^4.5.2
+  share_plus: ^10.1.4
+  fl_chart: ^0.70.2
+  image_picker: ^1.1.2
+  url_launcher: ^6.3.1
+  vibration: ^2.0.1
+  intl: ^0.20.2
+  file_picker: ^11.0.2
+  http_parser: ^4.1.2
+  web: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

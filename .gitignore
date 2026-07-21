@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment & secrets — never commit real credentials
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.p12
+*.key
+credentials.json
+service-account*.json
+**/google-services.json
+**/GoogleService-Info.plist
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+**/build/
+**/ios/Flutter/ephemeral/
+**/android/.gradle/
+**/android/local.properties
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/*.iml
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs & temp
+*.log
+npm-debug.log*
+.tmp/
+**/.tmp/
+coverage/
+.nyc_output/
+
+# Generated / misc
+*.pyc
+__pycache__/
+dist/
+.cache/
+*.lock.bak
