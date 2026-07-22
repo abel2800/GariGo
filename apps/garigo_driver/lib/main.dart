@@ -10,8 +10,11 @@ import 'package:gari_core/gari_core.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'pick_upload.dart';
+import 'offer_ring.dart';
+import 'driver_location.dart';
 
 part 'driver_screens.dart';
 
@@ -52,6 +55,7 @@ Driver driverFromJson(Map<String, dynamic> m, {Map<String, dynamic>? vehicle}) {
     id: m['id'].toString(),
     phone: m['phone']?.toString() ?? '',
     name: m['name']?.toString(),
+    photoUrl: m['photo_url']?.toString() ?? m['photoUrl']?.toString(),
     rating: _asDouble(m['rating_avg'], 5),
     approvalStatus: _approval(m['approval_status']),
     vehicleCategory: _catOrNull(m['category']),
@@ -67,6 +71,9 @@ Driver driverFromJson(Map<String, dynamic> m, {Map<String, dynamic>? vehicle}) {
         const [],
     lat: _asDouble(m['lat'], 9.0222),
     lng: _asDouble(m['lng'], 38.7468),
+    matchRadiusKm: _asDouble(m['match_radius_km'] ?? m['matchRadiusKm'], 2.0)
+        .clamp(0.5, 2.0),
+    availableBalance: _asInt(m['available_balance']),
   );
 }
 
@@ -170,10 +177,29 @@ class DriverApi {
       );
     }
     if (online) {
-      await client.pushLocation(
-        lat: driver?.lat ?? 9.010,
-        lng: driver?.lng ?? 38.780,
-      );
+      // Re-join socket room every time we go online (fixes missed offers).
+      if (driver != null) {
+        client.connectSocket(role: 'driver', userId: driver!.id);
+      }
+      var lat = 9.010;
+      var lng = 38.780;
+      final geo = await currentDriverLocation();
+      if (geo != null) {
+        lat = geo.lat;
+        lng = geo.lng;
+      } else if (driver != null) {
+        // Prefer existing coords only if they look like real Addis positions
+        // near the rider hub; otherwise default to Bole (typical pickup area).
+        final dLat = driver!.lat;
+        final dLng = driver!.lng;
+        final nearBole = (dLat - 9.01).abs() < 0.03 && (dLng - 38.78).abs() < 0.03;
+        if (nearBole) {
+          lat = dLat;
+          lng = dLng;
+        }
+      }
+      await client.pushLocation(lat: lat, lng: lng);
+      driver = driver?.copyWith(lat: lat, lng: lng);
     }
   }
 
@@ -183,7 +209,14 @@ class DriverApi {
       final bal = Map<String, dynamic>.from(res['balance'] as Map? ?? {});
       balance = (bal['available_balance'] as num?)?.round() ?? 0;
       debt = (bal['cash_debt'] as num?)?.round() ?? 0;
+      if (driver != null) {
+        driver = driver!.copyWith(availableBalance: balance);
+      }
     } catch (_) {}
+  }
+
+  Future<Map<String, dynamic>> earningsBundle() async {
+    return client.driverEarnings();
   }
 
   Future<List<Map<String, dynamic>>> earningsTrips() async {
@@ -191,6 +224,40 @@ class DriverApi {
     return (res['trips'] as List? ?? [])
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
+  }
+
+  Future<Driver> updateProfile({
+    String? name,
+    String? languagePref,
+    double? matchRadiusKm,
+  }) async {
+    final res = await client.updateDriverProfile(
+      name: name,
+      languagePref: languagePref,
+      matchRadiusKm: matchRadiusKm,
+    );
+    final raw = Map<String, dynamic>.from(res['driver'] as Map);
+    driver = driverFromJson(raw);
+    return driver!;
+  }
+
+  Future<String> uploadPhoto({
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final res = await client.uploadDriverPhoto(bytes: bytes, filename: filename);
+    final url = res['photoUrl']?.toString() ?? '';
+    if (driver != null && url.isNotEmpty) {
+      driver = driver!.copyWith(photoUrl: url);
+    }
+    return url;
+  }
+
+  Future<void> refreshMe() async {
+    final me = await client.me();
+    final profile = Map<String, dynamic>.from(me['profile'] as Map);
+    driver = driverFromJson(profile);
+    await refreshEarnings();
   }
 
   Future<void> setVehicle(VehicleCategory c) async {
@@ -462,7 +529,7 @@ class _DriverAppState extends ConsumerState<DriverApp> {
     if (!auth.bootstrapped) {
       return const MaterialApp(
         home: Scaffold(
-          backgroundColor: GariColors.nightBlue,
+          backgroundColor: GariColors.cream,
           body: Center(child: CircularProgressIndicator(color: GariColors.amber)),
         ),
       );
@@ -470,7 +537,7 @@ class _DriverAppState extends ConsumerState<DriverApp> {
     return MaterialApp.router(
       title: 'GariGo Driver',
       debugShowCheckedModeBanner: false,
-      theme: GariTheme.light(auth.locale, driverChrome: true),
+      theme: GariTheme.light(auth.locale),
       locale: auth.locale,
       routerConfig: ref.watch(routerProvider),
     );
@@ -542,7 +609,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/trips', builder: (_, __) => const _Trips()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/profile', builder: (_, __) => const _Prof()),
+            GoRoute(path: '/profile', builder: (_, __) => const _Prof(), routes: [
+              GoRoute(path: 'edit', builder: (_, __) => const _EditProfile()),
+              GoRoute(path: 'settings', builder: (_, __) => const _Settings()),
+            ]),
           ]),
         ],
       ),
@@ -551,6 +621,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/trip/:id/active', builder: (_, s) => _Active(id: s.pathParameters['id']!)),
       GoRoute(path: '/trip/:id/done', builder: (_, s) => _Done(id: s.pathParameters['id']!)),
       GoRoute(path: '/trip/:id/dispute', builder: (_, s) => _Dispute(id: s.pathParameters['id']!)),
+      GoRoute(path: '/trip/:id/chat', builder: (_, s) => _TripChat(id: s.pathParameters['id']!)),
       GoRoute(path: '/incentives', builder: (_, __) => const _Quest()),
       GoRoute(path: '/documents', builder: (_, __) => const _DocCenter()),
       GoRoute(path: '/support', builder: (_, __) => const _Support()),

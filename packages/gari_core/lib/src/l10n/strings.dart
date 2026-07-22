@@ -26,7 +26,11 @@ class S {
   String get cancelTrip => isAm ? 'ጉዞ ሰርዝ' : 'Cancel trip';
   String get mobileNumber => isAm ? 'የስልክ ቁጥር' : 'Mobile number';
   String get riderHero =>
-      isAm ? 'አዲስ፣ ጉዞዎ በ2 ደቂቃ ውስጥ ነው።' : 'Addis, your ride is 2 minutes away.';
+      isAm ? 'አዲስ፣ ጉዞዎ\nደቂቃዎች ብቻ ነው።' : 'Addis, your ride\nis minutes away.';
+  String get driverHeroLine1White => isAm ? 'አዲስ፣ ' : 'Addis, ';
+  String get driverHeroLine1Amber => isAm ? 'ኦንላይን ሂድ' : 'go online';
+  String get driverHeroLine2 =>
+      isAm ? 'ገቢ ማግኘት ይጀምሩ።' : 'and start earning.';
   String get earnings => isAm ? 'ገቢ' : 'Earnings';
   String get announcements => isAm ? 'ማስታወቂያዎች' : 'Announcements';
   String get support => isAm ? 'ድጋፍ' : 'Support';

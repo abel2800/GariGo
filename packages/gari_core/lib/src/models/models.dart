@@ -256,6 +256,7 @@ class Driver {
     required this.id,
     required this.phone,
     this.name,
+    this.photoUrl,
     this.rating = 5.0,
     this.approvalStatus = ApprovalStatus.none,
     this.vehicleCategory,
@@ -268,11 +269,14 @@ class Driver {
     this.rejectionReasons = const [],
     this.lat = 9.0222,
     this.lng = 38.7468,
+    this.matchRadiusKm = 2.0,
+    this.availableBalance = 0,
   });
 
   final String id;
   final String phone;
   final String? name;
+  final String? photoUrl;
   final double rating;
   final ApprovalStatus approvalStatus;
   final VehicleCategory? vehicleCategory;
@@ -285,9 +289,13 @@ class Driver {
   final List<String> rejectionReasons;
   final double lat;
   final double lng;
+  /// Preferred job search radius in km (0.5–2.0).
+  final double matchRadiusKm;
+  final int availableBalance;
 
   Driver copyWith({
     String? name,
+    String? photoUrl,
     ApprovalStatus? approvalStatus,
     VehicleCategory? vehicleCategory,
     OnlineStatus? onlineStatus,
@@ -295,23 +303,31 @@ class Driver {
     List<String>? rejectionReasons,
     double? lat,
     double? lng,
+    double? matchRadiusKm,
+    int? availableBalance,
+    String? plate,
+    String? vehicleColor,
+    String? vehicleModel,
   }) {
     return Driver(
       id: id,
       phone: phone,
       name: name ?? this.name,
+      photoUrl: photoUrl ?? this.photoUrl,
       rating: rating,
       approvalStatus: approvalStatus ?? this.approvalStatus,
       vehicleCategory: vehicleCategory ?? this.vehicleCategory,
       onlineStatus: onlineStatus ?? this.onlineStatus,
       commissionPercent: commissionPercent,
       totalTrips: totalTrips ?? this.totalTrips,
-      plate: plate,
-      vehicleColor: vehicleColor,
-      vehicleModel: vehicleModel,
+      plate: plate ?? this.plate,
+      vehicleColor: vehicleColor ?? this.vehicleColor,
+      vehicleModel: vehicleModel ?? this.vehicleModel,
       rejectionReasons: rejectionReasons ?? this.rejectionReasons,
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,
+      matchRadiusKm: matchRadiusKm ?? this.matchRadiusKm,
+      availableBalance: availableBalance ?? this.availableBalance,
     );
   }
 }
@@ -366,8 +382,14 @@ class TripOffer {
     required this.estimatedFare,
     required this.estimatedDurationMin,
     required this.acceptWindowSec,
-    this.riderName = 'Selam A.',
-    this.riderPin = '4821',
+    this.riderName,
+    this.riderPhotoUrl,
+    this.riderPhone,
+    this.riderRating,
+    this.riderPin = '0000',
+    this.category,
+    this.tripDistanceKm,
+    this.paymentMethod,
   });
 
   final String id;
@@ -377,8 +399,14 @@ class TripOffer {
   final int estimatedFare;
   final int estimatedDurationMin;
   final int acceptWindowSec;
-  final String riderName;
+  final String? riderName;
+  final String? riderPhotoUrl;
+  final String? riderPhone;
+  final double? riderRating;
   final String riderPin;
+  final String? category;
+  final double? tripDistanceKm;
+  final String? paymentMethod;
 }
 
 class MatchedDriverInfo {
@@ -390,9 +418,13 @@ class MatchedDriverInfo {
     required this.vehicleModel,
     required this.etaMin,
     required this.category,
+    this.id,
+    this.photoUrl,
+    this.phone,
     this.verified = true,
   });
 
+  final String? id;
   final String name;
   final double rating;
   final String plate;
@@ -400,6 +432,8 @@ class MatchedDriverInfo {
   final String vehicleModel;
   final int etaMin;
   final VehicleCategory category;
+  final String? photoUrl;
+  final String? phone;
   final bool verified;
 }
 
@@ -416,6 +450,9 @@ class ActiveTrip {
     this.hasVoiceNote = false,
     this.driver,
     this.fareQuote,
+    this.riderPhotoUrl,
+    this.riderPhone,
+    this.riderRating,
   });
 
   final String id;
@@ -429,15 +466,22 @@ class ActiveTrip {
   final bool hasVoiceNote;
   final MatchedDriverInfo? driver;
   final FareQuote? fareQuote;
+  final String? riderPhotoUrl;
+  final String? riderPhone;
+  final double? riderRating;
 
   ActiveTrip copyWith({
     TripStatus? status,
     int? accruedFare,
     MatchedDriverInfo? driver,
+    String? riderName,
+    String? riderPhotoUrl,
+    String? riderPhone,
+    double? riderRating,
   }) {
     return ActiveTrip(
       id: id,
-      riderName: riderName,
+      riderName: riderName ?? this.riderName,
       pickupLandmark: pickupLandmark,
       destinationLandmark: destinationLandmark,
       estimatedFare: estimatedFare,
@@ -447,6 +491,9 @@ class ActiveTrip {
       hasVoiceNote: hasVoiceNote,
       driver: driver ?? this.driver,
       fareQuote: fareQuote,
+      riderPhotoUrl: riderPhotoUrl ?? this.riderPhotoUrl,
+      riderPhone: riderPhone ?? this.riderPhone,
+      riderRating: riderRating ?? this.riderRating,
     );
   }
 }

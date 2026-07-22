@@ -58,6 +58,76 @@ router.patch('/online', authRequired(['driver']), async (req, res) => {
   res.json({ ok: true, online });
 });
 
+/** Edit name, language, and job search radius (0.5–2.0 km). */
+router.patch('/profile', authRequired(['driver']), async (req, res) => {
+  try {
+    const { name, languagePref, matchRadiusKm } = req.body;
+    let radius = matchRadiusKm != null ? Number(matchRadiusKm) : null;
+    if (radius != null) {
+      if (!Number.isFinite(radius)) {
+        return res.status(400).json({ error: 'Invalid match radius' });
+      }
+      // Product rule: shortest 500m, longest 2km
+      radius = Math.min(2, Math.max(0.5, radius));
+    }
+    await query(
+      `UPDATE drivers SET
+         name = COALESCE($2, name),
+         language_pref = COALESCE($3, language_pref),
+         match_radius_km = COALESCE($4, match_radius_km),
+         updated_at = NOW()
+       WHERE id = $1`,
+      [
+        req.user.sub,
+        name != null ? String(name).trim() : null,
+        languagePref || null,
+        radius,
+      ],
+    );
+    const { rows } = await query(
+      `SELECT d.*,
+              v.plate_number AS plate,
+              v.color AS vehicle_color,
+              v.model AS vehicle_model
+       FROM drivers d
+       LEFT JOIN vehicles v ON v.driver_id = d.id
+       WHERE d.id = $1`,
+      [req.user.sub],
+    );
+    res.json({ ok: true, driver: rows[0] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post(
+  '/photo',
+  authRequired(['driver']),
+  upload.single('file'),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'file required' });
+      const url = publicUploadUrl(req.file.filename, req);
+      await query(
+        `UPDATE drivers SET photo_url = $2, updated_at = NOW() WHERE id = $1`,
+        [req.user.sub, url],
+      );
+      await query(
+        `INSERT INTO driver_documents (driver_id, doc_type, url, verified)
+         VALUES ($1, 'selfie', $2, FALSE)
+         ON CONFLICT (driver_id, doc_type) DO UPDATE SET
+           url = EXCLUDED.url,
+           verified = FALSE,
+           rejection_reason = NULL`,
+        [req.user.sub, url],
+      );
+      res.json({ ok: true, photoUrl: url });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  },
+);
+
 router.post('/location', authRequired(['driver']), async (req, res) => {
   const { lat, lng, heading } = req.body;
   await query(
@@ -74,6 +144,53 @@ router.post('/location', authRequired(['driver']), async (req, res) => {
     [req.user.sub, lat, lng, heading ?? null],
   );
   res.json({ ok: true });
+});
+
+/** Backup for when socket miss — poll while online. */
+router.get('/pending-offer', authRequired(['driver']), async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT t.*,
+              gari_distance_m(d.lat, d.lng, t.pickup_lat, t.pickup_lng) AS dist_m
+       FROM trips t
+       JOIN drivers d ON d.id = $1
+       WHERE t.status IN ('requested', 'matching')
+         AND t.driver_id IS NULL
+         AND $1 = ANY (COALESCE(t.offered_to, '{}'))
+       ORDER BY t.requested_at DESC
+       LIMIT 1`,
+      [req.user.sub],
+    );
+    const trip = rows[0];
+    if (!trip) return res.json({ offer: null });
+    const windowSec = Number(process.env.ACCEPT_WINDOW_SEC || 20);
+    const rider = (
+      await query(
+        `SELECT name, photo_url, rating_avg FROM riders WHERE id = $1`,
+        [trip.rider_id],
+      )
+    ).rows[0];
+    res.json({
+      offer: {
+        tripId: trip.id,
+        pickupLandmark: trip.pickup_landmark,
+        pickupDistanceKm: Number(trip.dist_m) / 1000,
+        tripDistanceKm: Number(trip.distance_km) || 0,
+        destinationArea: trip.dropoff_landmark,
+        estimatedFare: trip.fare_total,
+        estimatedDurationMin: Number(trip.duration_min) || 18,
+        acceptWindowSec: windowSec,
+        riderPin: trip.rider_pin,
+        category: trip.vehicle_category,
+        paymentMethod: trip.payment_method,
+        riderName: rider?.name || 'Rider',
+        riderPhotoUrl: rider?.photo_url || null,
+        riderRating: rider ? Number(rider.rating_avg) : 5,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.post('/vehicle-category', authRequired(['driver']), async (req, res) => {
@@ -250,7 +367,7 @@ router.post(
       if (!req.file) {
         return res.status(400).json({ error: 'File required' });
       }
-      const url = publicUploadUrl(req.file.filename);
+      const url = publicUploadUrl(req.file.filename, req);
 
       const { rows } = await query(
         `INSERT INTO driver_documents (driver_id, doc_type, url, verified, rejection_reason)
@@ -397,7 +514,8 @@ router.post('/submit-for-approval', authRequired(['driver']), async (req, res) =
 
 router.get('/earnings', authRequired(['driver']), async (req, res) => {
   const { rows } = await query(
-    `SELECT id, fare_total, completed_at, pickup_landmark, dropoff_landmark
+    `SELECT id, fare_total, completed_at, pickup_landmark, dropoff_landmark,
+            distance_km, payment_method, vehicle_category, rider_rating
      FROM trips
      WHERE driver_id = $1 AND status = 'completed'
      ORDER BY completed_at DESC LIMIT 50`,
@@ -405,11 +523,33 @@ router.get('/earnings', authRequired(['driver']), async (req, res) => {
   );
   const driver = (
     await query(
-      `SELECT available_balance, cash_debt, commission_percent FROM drivers WHERE id = $1`,
+      `SELECT available_balance, cash_debt, commission_percent, total_trips, rating_avg
+       FROM drivers WHERE id = $1`,
       [req.user.sub],
     )
   ).rows[0];
-  res.json({ trips: rows, balance: driver });
+  const today = await query(
+    `SELECT COUNT(*)::int AS trips,
+            COALESCE(SUM(fare_total),0)::int AS gross
+     FROM trips
+     WHERE driver_id = $1 AND status = 'completed'
+       AND completed_at::date = CURRENT_DATE`,
+    [req.user.sub],
+  );
+  const week = await query(
+    `SELECT COUNT(*)::int AS trips,
+            COALESCE(SUM(fare_total),0)::int AS gross
+     FROM trips
+     WHERE driver_id = $1 AND status = 'completed'
+       AND completed_at > NOW() - INTERVAL '7 days'`,
+    [req.user.sub],
+  );
+  res.json({
+    trips: rows,
+    balance: driver,
+    today: today.rows[0],
+    week: week.rows[0],
+  });
 });
 
 router.post('/payout/instant', authRequired(['driver']), async (req, res) => {
@@ -442,6 +582,72 @@ router.post('/payout/instant', authRequired(['driver']), async (req, res) => {
     [driver.id, amount],
   );
   res.json({ ok: true, paid: net, fee: result.fee, txn: result.providerTxnId });
+});
+
+/** Support tickets from the driver app */
+router.get('/tickets', authRequired(['driver']), async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, category, subject, status, priority, created_at, resolved_at
+     FROM support_tickets
+     WHERE user_id = $1 AND user_type = 'driver'
+     ORDER BY created_at DESC LIMIT 50`,
+    [req.user.sub],
+  );
+  res.json({ tickets: rows });
+});
+
+router.post('/tickets', authRequired(['driver']), async (req, res) => {
+  const {
+    category = 'general',
+    subject,
+    message,
+    tripId,
+    priority = 'normal',
+  } = req.body;
+  if (!subject) return res.status(400).json({ error: 'subject required' });
+  const messages = message
+    ? [{ from: 'driver', body: message, at: new Date().toISOString() }]
+    : [];
+  const { rows } = await query(
+    `INSERT INTO support_tickets
+       (trip_id, user_id, user_type, category, subject, priority, messages)
+     VALUES ($1,$2,'driver',$3,$4,$5,$6::jsonb)
+     RETURNING *`,
+    [
+      tripId || null,
+      req.user.sub,
+      category,
+      subject,
+      priority,
+      JSON.stringify(messages),
+    ],
+  );
+  res.status(201).json({ ticket: rows[0] });
+});
+
+router.get('/announcements', authRequired(['driver']), async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, title, body, created_at
+     FROM announcements
+     WHERE audience IN ('drivers', 'all')
+     ORDER BY created_at DESC LIMIT 30`,
+  );
+  res.json({ announcements: rows });
+});
+
+router.get('/quests', authRequired(['driver']), async (req, res) => {
+  const { rows } = await query(
+    `SELECT q.*,
+            COALESCE(p.progress, 0) AS progress,
+            COALESCE(p.claimed, FALSE) AS claimed
+     FROM quests q
+     LEFT JOIN driver_quest_progress p
+       ON p.quest_id = q.id AND p.driver_id = $1
+     WHERE q.active = TRUE AND q.ends_at > NOW()
+     ORDER BY q.ends_at ASC`,
+    [req.user.sub],
+  );
+  res.json({ quests: rows });
 });
 
 export default router;

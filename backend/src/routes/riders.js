@@ -260,4 +260,56 @@ router.post('/login-password', async (req, res) => {
   }
 });
 
+/** Support tickets from the rider app */
+router.get('/tickets', authRequired(['rider']), async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, category, subject, status, priority, created_at, resolved_at
+     FROM support_tickets
+     WHERE user_id = $1 AND user_type = 'rider'
+     ORDER BY created_at DESC LIMIT 50`,
+    [req.user.sub],
+  );
+  res.json({ tickets: rows });
+});
+
+router.post('/tickets', authRequired(['rider']), async (req, res) => {
+  const {
+    category = 'general',
+    subject,
+    message,
+    tripId,
+    priority = 'normal',
+  } = req.body;
+  if (!subject) return res.status(400).json({ error: 'subject required' });
+  const messages = message
+    ? [{ from: 'rider', body: message, at: new Date().toISOString() }]
+    : [];
+  const { rows } = await query(
+    `INSERT INTO support_tickets
+       (trip_id, user_id, user_type, category, subject, priority, messages)
+     VALUES ($1,$2,'rider',$3,$4,$5,$6::jsonb)
+     RETURNING *`,
+    [
+      tripId || null,
+      req.user.sub,
+      category,
+      subject,
+      priority,
+      JSON.stringify(messages),
+    ],
+  );
+  res.status(201).json({ ticket: rows[0] });
+});
+
+/** In-app announcements for riders */
+router.get('/announcements', authRequired(['rider']), async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, title, body, created_at
+     FROM announcements
+     WHERE audience IN ('riders', 'all')
+     ORDER BY created_at DESC LIMIT 30`,
+  );
+  res.json({ announcements: rows });
+});
+
 export default router;

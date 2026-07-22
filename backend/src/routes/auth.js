@@ -136,9 +136,17 @@ router.post('/otp/verify', async (req, res) => {
 router.get('/me', authRequired(), async (req, res) => {
   try {
     if (req.user.role === 'driver') {
-      const { rows } = await query(`SELECT * FROM drivers WHERE id = $1`, [
-        req.user.sub,
-      ]);
+      const { rows } = await query(
+        `SELECT d.*,
+                v.plate_number AS plate,
+                v.color AS vehicle_color,
+                v.model AS vehicle_model,
+                v.make AS vehicle_make
+         FROM drivers d
+         LEFT JOIN vehicles v ON v.driver_id = d.id
+         WHERE d.id = $1`,
+        [req.user.sub],
+      );
       return res.json({ role: 'driver', profile: rows[0] });
     }
     if (req.user.role === 'admin') {

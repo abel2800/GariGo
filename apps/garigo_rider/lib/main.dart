@@ -9,6 +9,7 @@ import '../features/history/more_screens.dart';
 import '../features/home/home_screen.dart';
 import '../features/onboarding/auth_screens.dart';
 import '../features/trip/trip_screens.dart';
+import '../features/trip/trip_chat_screen.dart';
 import '../shared/providers/providers.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -35,11 +36,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       final needsProfile = auth.rider != null &&
           !auth.rider!.isGuest &&
           !auth.rider!.profileComplete;
-      if (needsProfile && loc != '/auth/register') {
+      // While finishing signup OTP → register, allow otp/register routes.
+      if (needsProfile &&
+          loc != '/auth/register' &&
+          loc != '/auth/otp') {
         return '/auth/register';
       }
       if (auth.loggedIn &&
-          (loc == '/' || loc == '/auth/phone' || loc == '/auth/otp')) {
+          (loc == '/' ||
+              loc == '/auth/phone' ||
+              loc == '/auth/signup')) {
         return needsProfile ? '/auth/register' : '/home';
       }
       return null;
@@ -47,6 +53,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/', builder: (_, __) => const LanguageScreen()),
       GoRoute(path: '/auth/phone', builder: (_, __) => const PhoneScreen(showHero: true)),
+      GoRoute(path: '/auth/signup', builder: (_, __) => const SignupScreen()),
       GoRoute(path: '/auth/otp', builder: (_, __) => const OtpScreen()),
       GoRoute(path: '/auth/register', builder: (_, __) => const RegisterScreen()),
       StatefulShellRoute.indexedStack(
@@ -100,6 +107,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/trip/:id/rate',
         builder: (_, s) => RateScreen(tripId: s.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/trip/:id/chat',
+        builder: (_, s) => TripChatScreen(tripId: s.pathParameters['id']!),
       ),
       GoRoute(
         path: '/history/:id/receipt',

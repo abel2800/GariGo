@@ -36,10 +36,11 @@ export class MatchingEngine {
       return;
     }
 
-    const maxR = Number(process.env.MATCH_RADIUS_MAX_KM || 8);
-    const expand = Number(process.env.MATCH_RADIUS_EXPAND_KM || 1.5);
-    let radius = Number(trip.search_radius_km) || Number(process.env.MATCH_RADIUS_START_KM || 1.5);
-
+    const maxR = Number(process.env.MATCH_RADIUS_MAX_KM || 2);
+    const expand = Number(process.env.MATCH_RADIUS_EXPAND_KM || 0.5);
+    let radius = Number(trip.search_radius_km) || Number(process.env.MATCH_RADIUS_START_KM || 0.5);
+    // Hard product cap: search never exceeds 2 km
+    radius = Math.min(radius, 2);
     const offered = trip.offered_to || [];
 
     const candidates = await query(
@@ -54,6 +55,8 @@ export class MatchingEngine {
          AND d.status = 'active'
          AND d.lat IS NOT NULL AND d.lng IS NOT NULL
          AND gari_distance_m(d.lat, d.lng, t.pickup_lat, t.pickup_lng) <= $2
+         AND gari_distance_m(d.lat, d.lng, t.pickup_lat, t.pickup_lng)
+             <= (LEAST(GREATEST(COALESCE(d.match_radius_km, 2.0), 0.5), 2.0) * 1000)
          AND NOT (d.id = ANY($3::uuid[]))
        ORDER BY
          gari_distance_m(d.lat, d.lng, t.pickup_lat, t.pickup_lng) ASC,
@@ -88,23 +91,38 @@ export class MatchingEngine {
       [tripId, driver.id],
     );
 
+    const rider = (
+      await query(
+        `SELECT id, name, photo_url, rating_avg FROM riders WHERE id = $1`,
+        [trip.rider_id],
+      )
+    ).rows[0];
+
     const offer = {
       tripId,
       pickupLandmark: trip.pickup_landmark,
       pickupDistanceKm: Number(driver.dist_m) / 1000,
+      tripDistanceKm: Number(trip.distance_km) || 0,
       destinationArea: trip.dropoff_landmark,
       estimatedFare: trip.fare_total,
       estimatedDurationMin: Number(trip.duration_min) || 18,
       acceptWindowSec: windowSec,
       riderPin: trip.rider_pin,
       category: trip.vehicle_category,
+      paymentMethod: trip.payment_method,
+      riderName: rider?.name || 'Rider',
+      riderPhotoUrl: rider?.photo_url || null,
+      riderRating: rider ? Number(rider.rating_avg) : 5,
     };
 
     this.io.to(`driver:${driver.id}`).emit('ride_request', offer);
+    console.log(
+      `[match] offer trip=${tripId} → driver=${driver.id} distKm=${offer.pickupDistanceKm.toFixed(2)} fare=${offer.estimatedFare}`,
+    );
     await sendPush(driver.fcm_token, {
-      title: 'New trip request',
-      body: `${offer.pickupLandmark} · ${offer.estimatedFare} Br`,
-      data: { tripId },
+      title: 'New trip request — GariGo',
+      body: `${offer.pickupLandmark} · ${offer.estimatedFare} Br · ${(offer.pickupDistanceKm).toFixed(1)} km away`,
+      data: { tripId, type: 'ride_request' },
     });
 
     // Auto-skip if no accept
@@ -161,6 +179,13 @@ export class MatchingEngine {
         )
       ).rows[0];
 
+      const rider = (
+        await query(
+          `SELECT id, name, phone, photo_url, rating_avg, fcm_token FROM riders WHERE id = $1`,
+          [trip.rider_id],
+        )
+      ).rows[0];
+
       const payload = {
         tripId,
         driver: {
@@ -171,8 +196,18 @@ export class MatchingEngine {
           vehicleColor: driver.color,
           vehicleModel: driver.model,
           category: driver.category,
-          phoneMasked: true,
+          photoUrl: driver.photo_url || null,
+          phone: driver.phone || null,
         },
+        rider: rider
+          ? {
+              id: rider.id,
+              name: rider.name || 'Rider',
+              photoUrl: rider.photo_url || null,
+              phone: rider.phone || null,
+              rating: Number(rider.rating_avg),
+            }
+          : null,
         riderPin: trip.rider_pin,
         etaMin: 5,
       };
@@ -180,11 +215,6 @@ export class MatchingEngine {
       this.io.to(`trip:${tripId}`).emit('driver_matched', payload);
       this.io.to(`rider:${trip.rider_id}`).emit('driver_matched', payload);
 
-      const rider = (
-        await query(`SELECT phone, fcm_token FROM riders WHERE id = $1`, [
-          trip.rider_id,
-        ])
-      ).rows[0];
       if (rider) {
         await sendPush(rider.fcm_token, {
           title: 'Driver matched',

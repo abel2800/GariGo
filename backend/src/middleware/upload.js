@@ -73,6 +73,18 @@ export const upload = multer({
   },
 });
 
-export function publicUploadUrl(filename) {
-  return `/uploads/${filename}`;
+export function publicUploadUrl(filename, req = null) {
+  const path = `/uploads/${filename}`;
+  if (req) {
+    const host = req.get?.('host') || req.headers?.host;
+    if (host) {
+      const proto = req.protocol || 'http';
+      return `${proto}://${host}${path}`;
+    }
+  }
+  const base = (process.env.PUBLIC_API_URL || 'http://localhost:4000').replace(
+    /\/$/,
+    '',
+  );
+  return `${base}${path}`;
 }

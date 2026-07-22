@@ -5,17 +5,27 @@ import jwt from 'jsonwebtoken';
 import { query } from '../db/pool.js';
 import { signToken, authRequired } from '../middleware/auth.js';
 import { sendPush } from '../services/push.js';
+import { upload, publicUploadUrl } from '../middleware/upload.js';
+import {
+  quoteFare,
+  haversineKm,
+  estimateRoute,
+} from '../services/fare.js';
 
 const router = Router();
 
+/** Set by createAdminRouter so booking can start matching. */
+let matchingEngine = null;
+
 const secret = () => process.env.JWT_SECRET || 'garigo_dev_secret';
 
-/** Role → allowed permission keys */
+/** Role → allowed permission keys (workers never get '*') */
 const ROLE_PERMS = {
   super_admin: ['*'],
   city_ops: [
     'ops',
     'drivers',
+    'docs',
     'trips',
     'sos',
     'zones',
@@ -23,14 +33,54 @@ const ROLE_PERMS = {
     'quests',
     'analytics',
     'push',
+    'booking',
+    'riders',
   ],
-  support: ['ops', 'tickets', 'trips', 'riders', 'sos'],
+  support: ['ops', 'tickets', 'trips', 'riders', 'sos', 'booking'],
+  call_center: ['ops', 'booking', 'riders', 'trips', 'tickets'],
   finance: ['finance', 'payouts', 'promos', 'pricing', 'analytics'],
-  trust_safety: ['drivers', 'docs', 'sos', 'riders', 'audit', 'trips'],
+  trust_safety: ['drivers', 'docs', 'sos', 'riders', 'audit', 'trips', 'ops'],
 };
+
+/** Roles that can be assigned when hiring workers (not CEO). */
+const HIREABLE_ROLES = [
+  'city_ops',
+  'support',
+  'call_center',
+  'finance',
+  'trust_safety',
+];
+
+const STAFF_ROLES = Object.keys(ROLE_PERMS);
 
 function permsFor(role) {
   return ROLE_PERMS[role] || ROLE_PERMS.support;
+}
+
+function normalizePhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('251') && d.length === 12) return `+${d}`;
+  if (d.startsWith('0') && d.length === 10) d = d.slice(1);
+  if (d.length === 9 && (d.startsWith('9') || d.startsWith('7'))) {
+    return `+251${d}`;
+  }
+  return null;
+}
+
+function adminPublic(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    phone: row.phone || null,
+    photoUrl: row.photo_url || null,
+    active: row.active !== false,
+    permissions: permsFor(row.role),
+    hasTotp: !!(row.totp_secret || row.has_totp),
+    createdAt: row.created_at || null,
+  };
 }
 
 function requirePerm(...needed) {
@@ -136,6 +186,9 @@ router.post('/login', async (req, res) => {
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
+  if (user.active === false) {
+    return res.status(403).json({ error: 'Account deactivated' });
+  }
   res.json({
     requires2fa: true,
     hasTotp: !!user.totp_secret,
@@ -151,11 +204,15 @@ router.post('/2fa', async (req, res) => {
       return res.status(401).json({ error: 'Invalid temp token' });
     }
     const { rows } = await query(
-      `SELECT id, email, name, role, totp_secret FROM admin_users WHERE id = $1`,
+      `SELECT id, email, name, role, totp_secret, phone, photo_url, active
+       FROM admin_users WHERE id = $1`,
       [decoded.sub],
     );
     const user = rows[0];
     if (!user) return res.status(401).json({ error: 'Admin not found' });
+    if (user.active === false) {
+      return res.status(403).json({ error: 'Account deactivated' });
+    }
 
     let ok = false;
     if (user.totp_secret) {
@@ -170,14 +227,7 @@ router.post('/2fa', async (req, res) => {
     await audit(user.id, 'admin_login', { email: user.email });
     res.json({
       token,
-      admin: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        permissions: permsFor(user.role),
-        hasTotp: !!user.totp_secret,
-      },
+      admin: adminPublic(user),
     });
   } catch {
     res.status(401).json({ error: 'Invalid temp token' });
@@ -186,21 +236,84 @@ router.post('/2fa', async (req, res) => {
 
 router.get('/me', authRequired(['admin']), async (req, res) => {
   const { rows } = await query(
-    `SELECT id, email, name, role, totp_secret IS NOT NULL AS has_totp
+    `SELECT id, email, name, role, phone, photo_url, active,
+            totp_secret IS NOT NULL AS has_totp, created_at
      FROM admin_users WHERE id = $1`,
     [req.user.sub],
   );
   const user = rows[0];
   if (!user) return res.status(404).json({ error: 'Not found' });
-  res.json({
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    permissions: permsFor(user.role),
-    hasTotp: user.has_totp,
-  });
+  if (user.active === false) {
+    return res.status(403).json({ error: 'Account deactivated' });
+  }
+  res.json(adminPublic(user));
 });
+
+router.patch('/me', authRequired(['admin']), async (req, res) => {
+  try {
+    const { name, phone, password, currentPassword } = req.body;
+    const { rows } = await query(`SELECT * FROM admin_users WHERE id = $1`, [
+      req.user.sub,
+    ]);
+    const user = rows[0];
+    if (!user) return res.status(404).json({ error: 'Not found' });
+
+    let passwordHash = user.password_hash;
+    if (password) {
+      if (!currentPassword || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+        return res.status(400).json({ error: 'Current password required' });
+      }
+      if (String(password).length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+      passwordHash = await bcrypt.hash(String(password), 10);
+    }
+
+    const { rows: updated } = await query(
+      `UPDATE admin_users SET
+         name = COALESCE($2, name),
+         phone = COALESCE($3, phone),
+         password_hash = $4,
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, email, name, role, phone, photo_url, active,
+                 totp_secret IS NOT NULL AS has_totp, created_at`,
+      [
+        req.user.sub,
+        name != null ? String(name).trim() : null,
+        phone != null ? String(phone).trim() : null,
+        passwordHash,
+      ],
+    );
+    await audit(req.user.sub, 'admin_self_profile', {});
+    res.json({ admin: adminPublic(updated[0]) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post(
+  '/me/photo',
+  authRequired(['admin']),
+  upload.single('file'),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'Photo required' });
+      const url = publicUploadUrl(req.file.filename, req);
+      const { rows } = await query(
+        `UPDATE admin_users SET photo_url = $2, updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, email, name, role, phone, photo_url, active,
+                   totp_secret IS NOT NULL AS has_totp, created_at`,
+        [req.user.sub, url],
+      );
+      await audit(req.user.sub, 'admin_self_photo', {});
+      res.json({ admin: adminPublic(rows[0]), photoUrl: url });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  },
+);
 
 router.post(
   '/2fa/setup',
@@ -271,6 +384,14 @@ router.get(
       `SELECT COUNT(*)::int AS c FROM trips
        WHERE requested_at > NOW() - INTERVAL '1 minute'`,
     );
+    const demand = await query(
+      `SELECT pickup_lat AS lat, pickup_lng AS lng
+       FROM trips
+       WHERE requested_at > NOW() - INTERVAL '2 hours'
+         AND pickup_lat IS NOT NULL AND pickup_lng IS NOT NULL
+       ORDER BY requested_at DESC
+       LIMIT 200`,
+    );
     res.json({
       kpis: {
         online: online.rows[0].c,
@@ -283,6 +404,7 @@ router.get(
       drivers: drivers.rows,
       pendingDrivers: pending.rows,
       activeTrips: activeTrips.rows,
+      demandHeat: demand.rows,
     });
   },
 );
@@ -449,6 +571,86 @@ router.post(
 /* ── Riders ──────────────────────────────────────────────────────────── */
 
 router.get(
+  '/riders/lookup',
+  authRequired(['admin']),
+  requirePerm('booking', 'riders', '*'),
+  async (req, res) => {
+    try {
+      const phone = normalizePhone(req.query.phone);
+      if (!phone) return res.status(400).json({ error: 'Invalid Ethiopian phone' });
+      const { rows } = await query(
+        `SELECT id, phone, name, photo_url, rating_avg, total_trips, status, created_at
+         FROM riders WHERE phone = $1`,
+        [phone],
+      );
+      res.json({
+        phone,
+        rider: rows[0]
+          ? {
+              id: rows[0].id,
+              phone: rows[0].phone,
+              name: rows[0].name,
+              photoUrl: rows[0].photo_url,
+              rating: Number(rows[0].rating_avg),
+              totalTrips: rows[0].total_trips,
+              status: rows[0].status,
+            }
+          : null,
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  },
+);
+
+router.post(
+  '/riders',
+  authRequired(['admin']),
+  requirePerm('booking', 'riders', '*'),
+  async (req, res) => {
+    try {
+      const phone = normalizePhone(req.body.phone);
+      const name = String(req.body.name || '').trim() || 'Caller';
+      if (!phone) return res.status(400).json({ error: 'Invalid Ethiopian phone' });
+      const existing = await query(`SELECT * FROM riders WHERE phone = $1`, [phone]);
+      if (existing.rows[0]) {
+        const r = existing.rows[0];
+        return res.json({
+          created: false,
+          rider: {
+            id: r.id,
+            phone: r.phone,
+            name: r.name,
+            photoUrl: r.photo_url,
+            rating: Number(r.rating_avg),
+          },
+        });
+      }
+      const { rows } = await query(
+        `INSERT INTO riders (phone, name, is_guest)
+         VALUES ($1, $2, TRUE)
+         RETURNING id, phone, name, photo_url, rating_avg`,
+        [phone, name],
+      );
+      const r = rows[0];
+      await audit(req.user.sub, 'rider_create_callcenter', { riderId: r.id, phone });
+      res.status(201).json({
+        created: true,
+        rider: {
+          id: r.id,
+          phone: r.phone,
+          name: r.name,
+          photoUrl: r.photo_url,
+          rating: Number(r.rating_avg),
+        },
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  },
+);
+
+router.get(
   '/riders/:id',
   authRequired(['admin']),
   requirePerm('riders'),
@@ -553,8 +755,8 @@ router.get(
   async (req, res) => {
     const { rows } = await query(
       `SELECT t.*,
-              r.name AS rider_name, r.phone AS rider_phone,
-              d.name AS driver_name, d.phone AS driver_phone
+              r.name AS rider_name, r.phone AS rider_phone, r.photo_url AS rider_photo_url,
+              d.name AS driver_name, d.phone AS driver_phone, d.photo_url AS driver_photo_url
        FROM trips t
        LEFT JOIN riders r ON r.id = t.rider_id
        LEFT JOIN drivers d ON d.id = t.driver_id
@@ -632,6 +834,46 @@ router.patch(
   },
 );
 
+router.post(
+  '/tickets',
+  authRequired(['admin']),
+  requirePerm('tickets'),
+  async (req, res) => {
+    const {
+      userId,
+      userType = 'rider',
+      category = 'general',
+      subject,
+      priority = 'normal',
+      tripId,
+      message,
+    } = req.body;
+    if (!userId || !subject) {
+      return res.status(400).json({ error: 'userId and subject required' });
+    }
+    const messages = message
+      ? [{ from: 'admin', body: message, at: new Date().toISOString() }]
+      : [];
+    const { rows } = await query(
+      `INSERT INTO support_tickets
+         (trip_id, user_id, user_type, category, subject, priority, messages)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+       RETURNING *`,
+      [
+        tripId || null,
+        userId,
+        userType,
+        category,
+        subject,
+        priority,
+        JSON.stringify(messages),
+      ],
+    );
+    await audit(req.user.sub, 'ticket_create', { ticketId: rows[0].id });
+    res.status(201).json({ ticket: rows[0] });
+  },
+);
+
 /* ── Pricing / zones / promos ────────────────────────────────────────── */
 
 router.get(
@@ -685,13 +927,38 @@ router.put(
   authRequired(['admin']),
   requirePerm('zones'),
   async (req, res) => {
-    const { surgeMultiplier, name } = req.body;
+    const {
+      surgeMultiplier,
+      name,
+      centerLat,
+      centerLng,
+      radiusKm,
+      active,
+      baseFareOverrides,
+      polygon,
+    } = req.body;
     await query(
       `UPDATE zones SET
          surge_multiplier = COALESCE($2, surge_multiplier),
-         name = COALESCE($3, name)
+         name = COALESCE($3, name),
+         center_lat = COALESCE($4, center_lat),
+         center_lng = COALESCE($5, center_lng),
+         radius_km = COALESCE($6, radius_km),
+         active = COALESCE($7, active),
+         base_fare_overrides = COALESCE($8::jsonb, base_fare_overrides),
+         polygon = COALESCE($9::jsonb, polygon)
        WHERE id = $1`,
-      [req.params.id, surgeMultiplier ?? null, name ?? null],
+      [
+        req.params.id,
+        surgeMultiplier ?? null,
+        name ?? null,
+        centerLat ?? null,
+        centerLng ?? null,
+        radiusKm ?? null,
+        active ?? null,
+        baseFareOverrides != null ? JSON.stringify(baseFareOverrides) : null,
+        polygon != null ? JSON.stringify(polygon) : null,
+      ],
     );
     await audit(req.user.sub, 'zone_update', { zoneId: req.params.id, ...req.body });
     res.json({ ok: true });
@@ -703,11 +970,28 @@ router.post(
   authRequired(['admin']),
   requirePerm('zones'),
   async (req, res) => {
-    const { name, surgeMultiplier = 1.0, polygon = null } = req.body;
+    const {
+      name,
+      surgeMultiplier = 1.0,
+      polygon = null,
+      centerLat = null,
+      centerLng = null,
+      radiusKm = 3,
+      baseFareOverrides = {},
+    } = req.body;
     const { rows } = await query(
-      `INSERT INTO zones (name, surge_multiplier, polygon)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [name, surgeMultiplier, polygon ? JSON.stringify(polygon) : null],
+      `INSERT INTO zones
+         (name, surge_multiplier, polygon, center_lat, center_lng, radius_km, base_fare_overrides)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) RETURNING *`,
+      [
+        name,
+        surgeMultiplier,
+        polygon ? JSON.stringify(polygon) : null,
+        centerLat,
+        centerLng,
+        radiusKm,
+        JSON.stringify(baseFareOverrides || {}),
+      ],
     );
     await audit(req.user.sub, 'zone_create', { zoneId: rows[0].id, name });
     res.json({ zone: rows[0] });
@@ -738,10 +1022,11 @@ router.post(
       validTo,
       usageLimit,
       zoneRestriction,
+      active = true,
     } = req.body;
     const { rows } = await query(
-      `INSERT INTO promos (code, discount_type, value, valid_to, usage_limit, zone_restriction)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      `INSERT INTO promos (code, discount_type, value, valid_to, usage_limit, zone_restriction, active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [
         String(code).toUpperCase(),
         discountType,
@@ -749,10 +1034,39 @@ router.post(
         validTo || null,
         usageLimit || null,
         zoneRestriction || null,
+        active !== false,
       ],
     );
     await audit(req.user.sub, 'promo_create', { code });
     res.json({ promo: rows[0] });
+  },
+);
+
+router.patch(
+  '/promos/:id',
+  authRequired(['admin']),
+  requirePerm('promos'),
+  async (req, res) => {
+    const { active, value, usageLimit, validTo, discountType } = req.body;
+    await query(
+      `UPDATE promos SET
+         active = COALESCE($2, active),
+         value = COALESCE($3, value),
+         usage_limit = COALESCE($4, usage_limit),
+         valid_to = COALESCE($5, valid_to),
+         discount_type = COALESCE($6, discount_type)
+       WHERE id = $1`,
+      [
+        req.params.id,
+        active ?? null,
+        value ?? null,
+        usageLimit ?? null,
+        validTo ?? null,
+        discountType ?? null,
+      ],
+    );
+    await audit(req.user.sub, 'promo_update', { promoId: req.params.id, ...req.body });
+    res.json({ ok: true });
   },
 );
 
@@ -804,6 +1118,57 @@ router.get(
   },
 );
 
+router.post(
+  '/finance/cash-debt/:driverId/settle',
+  authRequired(['admin']),
+  requirePerm('finance'),
+  async (req, res) => {
+    const driverId = req.params.driverId;
+    const { rows } = await query(
+      `SELECT id, cash_debt, available_balance, name FROM drivers WHERE id = $1`,
+      [driverId],
+    );
+    const driver = rows[0];
+    if (!driver) return res.status(404).json({ error: 'Driver not found' });
+    const owed = Number(driver.cash_debt) || 0;
+    if (owed <= 0) return res.status(400).json({ error: 'No cash debt' });
+
+    const amount =
+      req.body.amount != null ? Number(req.body.amount) : owed;
+    if (!Number.isFinite(amount) || amount <= 0 || amount > owed) {
+      return res.status(400).json({ error: 'Invalid settle amount' });
+    }
+
+    const fromBalance = req.body.fromBalance !== false;
+    const bal = Number(driver.available_balance) || 0;
+    let deducted = 0;
+    if (fromBalance && bal > 0) {
+      deducted = Math.min(bal, amount);
+    }
+
+    await query(
+      `UPDATE drivers SET
+         cash_debt = cash_debt - $2,
+         available_balance = available_balance - $3,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [driverId, amount, deducted],
+    );
+    await audit(req.user.sub, 'cash_debt_settle', {
+      driverId,
+      amount,
+      deductedFromBalance: deducted,
+      collectedExternally: amount - deducted,
+    });
+    res.json({
+      ok: true,
+      settled: amount,
+      deductedFromBalance: deducted,
+      remainingDebt: owed - amount,
+    });
+  },
+);
+
 router.get(
   '/finance/payouts',
   authRequired(['admin']),
@@ -815,10 +1180,17 @@ router.get(
        ORDER BY available_balance DESC LIMIT 500`,
     );
     const total = rows.reduce((s, d) => s + money(d.available_balance), 0);
+    const history = await query(
+      `SELECT pl.*, d.name AS driver_name
+       FROM payout_ledger pl
+       JOIN drivers d ON d.id = pl.driver_id
+       ORDER BY pl.created_at DESC LIMIT 50`,
+    );
     res.json({
       drivers: rows,
       count: rows.length,
       totalBr: total,
+      recentPayouts: history.rows,
     });
   },
 );
@@ -829,12 +1201,37 @@ router.post(
   requirePerm('payouts', 'finance'),
   async (req, res) => {
     const { rows } = await query(
-      `SELECT id, available_balance FROM drivers WHERE available_balance > 0`,
+      `SELECT id, available_balance, telebirr_merchant_id, cbe_account, hellocash_wallet_id
+       FROM drivers WHERE available_balance > 0`,
     );
     const total = rows.reduce((s, d) => s + money(d.available_balance), 0);
-    await query(
-      `UPDATE drivers SET available_balance = 0, updated_at = NOW() WHERE available_balance > 0`,
-    );
+    for (const d of rows) {
+      const amount = money(d.available_balance);
+      const method = d.telebirr_merchant_id
+        ? 'telebirr'
+        : d.cbe_account
+          ? 'cbe_birr'
+          : d.hellocash_wallet_id
+            ? 'hellocash'
+            : 'internal';
+      await query(
+        `INSERT INTO payout_ledger (driver_id, amount, method, status, processed_by, meta)
+         VALUES ($1, $2, $3, 'paid', $4, $5::jsonb)`,
+        [
+          d.id,
+          amount,
+          method,
+          req.user.sub,
+          JSON.stringify({
+            note: 'Batch payout — recorded in ledger; wire to PSP when credentials set',
+          }),
+        ],
+      );
+      await query(
+        `UPDATE drivers SET available_balance = 0, updated_at = NOW() WHERE id = $1`,
+        [d.id],
+      );
+    }
     await audit(req.user.sub, 'payout_batch', {
       count: rows.length,
       totalBr: total,
@@ -918,13 +1315,36 @@ router.post(
       const result = await sendPush(t, { title, body });
       if (result.ok) sent += 1;
     }
+    const { rows: camp } = await query(
+      `INSERT INTO push_campaigns (title, body, audience, targeted, sent, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [title, body, audience, tokens.length, sent, req.user.sub],
+    );
     await audit(req.user.sub, 'push_broadcast', {
       title,
       audience,
       tokens: tokens.length,
       sent,
+      campaignId: camp[0].id,
     });
-    res.json({ ok: true, targeted: tokens.length, sent });
+    res.json({
+      ok: true,
+      targeted: tokens.length,
+      sent,
+      campaign: camp[0],
+    });
+  },
+);
+
+router.get(
+  '/push',
+  authRequired(['admin']),
+  requirePerm('push'),
+  async (req, res) => {
+    const { rows } = await query(
+      `SELECT * FROM push_campaigns ORDER BY created_at DESC LIMIT 50`,
+    );
+    res.json({ campaigns: rows });
   },
 );
 
@@ -1011,16 +1431,140 @@ router.patch(
 router.get(
   '/roles',
   authRequired(['admin']),
-  requirePerm('*', 'audit'),
+  requirePerm('*'),
   async (req, res) => {
-    const roles = Object.entries(ROLE_PERMS).map(([role, permissions]) => ({
-      role,
-      permissions,
-    }));
     const { rows } = await query(
-      `SELECT id, email, name, role, created_at FROM admin_users ORDER BY created_at`,
+      `SELECT id, email, name, role, phone, photo_url, active, created_at
+       FROM admin_users ORDER BY created_at`,
     );
-    res.json({ roles, admins: rows });
+    res.json({
+      roles: Object.entries(ROLE_PERMS).map(([role, permissions]) => ({
+        role,
+        permissions,
+        hireable: HIREABLE_ROLES.includes(role),
+      })),
+      hireableRoles: HIREABLE_ROLES,
+      admins: rows.map((a) => adminPublic({ ...a, has_totp: false })),
+    });
+  },
+);
+
+router.post(
+  '/admins',
+  authRequired(['admin']),
+  requirePerm('*'),
+  async (req, res) => {
+    try {
+      const { email, password, name, role = 'call_center', phone } = req.body;
+      if (!email || !password || !name) {
+        return res.status(400).json({ error: 'name, email, password required' });
+      }
+      if (!HIREABLE_ROLES.includes(role)) {
+        return res.status(400).json({
+          error:
+            'Workers cannot be hired as super_admin. Only one CEO exists — pick a worker role.',
+        });
+      }
+      if (String(password).length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+      const hash = await bcrypt.hash(String(password), 10);
+      const { rows } = await query(
+        `INSERT INTO admin_users (email, password_hash, name, role, phone)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, email, name, role, phone, photo_url, active, created_at`,
+        [
+          String(email).trim().toLowerCase(),
+          hash,
+          String(name).trim(),
+          role,
+          phone ? String(phone).trim() : null,
+        ],
+      );
+      await audit(req.user.sub, 'admin_create', {
+        targetId: rows[0].id,
+        email: rows[0].email,
+        role,
+      });
+      res.status(201).json({ admin: adminPublic(rows[0]) });
+    } catch (e) {
+      if (e.code === '23505') {
+        return res.status(409).json({ error: 'Email already exists' });
+      }
+      res.status(500).json({ error: e.message });
+    }
+  },
+);
+
+router.patch(
+  '/admins/:id',
+  authRequired(['admin']),
+  requirePerm('*'),
+  async (req, res) => {
+    try {
+      const { name, email, role, phone, active, password } = req.body;
+      const existing = (
+        await query(`SELECT * FROM admin_users WHERE id = $1`, [req.params.id])
+      ).rows[0];
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+
+      if (role != null) {
+        if (role === 'super_admin') {
+          return res.status(400).json({
+            error: 'Cannot promote workers to super_admin — only one CEO is allowed',
+          });
+        }
+        if (!HIREABLE_ROLES.includes(role) && role !== existing.role) {
+          return res.status(400).json({ error: 'Unknown worker role' });
+        }
+      }
+
+      // Never deactivate or demote the last / only CEO
+      if (existing.role === 'super_admin') {
+        if (active === false) {
+          return res.status(400).json({ error: 'Cannot deactivate the CEO account' });
+        }
+        if (role != null && role !== 'super_admin') {
+          return res.status(400).json({ error: 'Cannot demote the CEO account' });
+        }
+      }
+
+      let passwordHash = null;
+      if (password) {
+        if (String(password).length < 6) {
+          return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+        passwordHash = await bcrypt.hash(String(password), 10);
+      }
+      const { rows } = await query(
+        `UPDATE admin_users SET
+           name = COALESCE($2, name),
+           email = COALESCE($3, email),
+           role = COALESCE($4, role),
+           phone = COALESCE($5, phone),
+           active = COALESCE($6, active),
+           password_hash = COALESCE($7, password_hash),
+           updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, email, name, role, phone, photo_url, active, created_at`,
+        [
+          req.params.id,
+          name != null ? String(name).trim() : null,
+          email != null ? String(email).trim().toLowerCase() : null,
+          existing.role === 'super_admin' ? 'super_admin' : (role ?? null),
+          phone !== undefined ? (phone ? String(phone).trim() : null) : null,
+          typeof active === 'boolean' ? active : null,
+          passwordHash,
+        ],
+      );
+      await audit(req.user.sub, 'admin_update', { targetId: req.params.id });
+      res.json({ admin: adminPublic(rows[0]) });
+    } catch (e) {
+      if (e.code === '23505') {
+        return res.status(409).json({ error: 'Email already exists' });
+      }
+      res.status(500).json({ error: e.message });
+    }
   },
 );
 
@@ -1030,10 +1574,22 @@ router.patch(
   requirePerm('*'),
   async (req, res) => {
     const { role } = req.body;
-    if (!ROLE_PERMS[role]) {
+    if (role === 'super_admin') {
+      return res.status(400).json({
+        error: 'Cannot assign super_admin — only one CEO account is allowed',
+      });
+    }
+    if (!HIREABLE_ROLES.includes(role)) {
       return res.status(400).json({ error: 'Unknown role' });
     }
-    await query(`UPDATE admin_users SET role = $2 WHERE id = $1`, [
+    const target = (
+      await query(`SELECT role FROM admin_users WHERE id = $1`, [req.params.id])
+    ).rows[0];
+    if (!target) return res.status(404).json({ error: 'Not found' });
+    if (target.role === 'super_admin') {
+      return res.status(400).json({ error: 'Cannot change the CEO role' });
+    }
+    await query(`UPDATE admin_users SET role = $2, updated_at = NOW() WHERE id = $1`, [
       req.params.id,
       role,
     ]);
@@ -1042,6 +1598,167 @@ router.patch(
       role,
     });
     res.json({ ok: true });
+  },
+);
+
+router.post(
+  '/admins/:id/photo',
+  authRequired(['admin']),
+  requirePerm('*'),
+  upload.single('file'),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'Photo required' });
+      const url = publicUploadUrl(req.file.filename, req);
+      const { rows } = await query(
+        `UPDATE admin_users SET photo_url = $2, updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, email, name, role, phone, photo_url, active, created_at`,
+        [req.params.id, url],
+      );
+      if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+      res.json({ admin: adminPublic(rows[0]), photoUrl: url });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  },
+);
+
+/* ── Call center / book for caller ───────────────────────────────────── */
+
+router.post(
+  '/trips/book',
+  authRequired(['admin']),
+  requirePerm('booking', '*'),
+  async (req, res) => {
+    try {
+      if (!matchingEngine) {
+        return res.status(503).json({ error: 'Matching engine unavailable' });
+      }
+      const {
+        riderId,
+        phone,
+        riderName,
+        pickupLat,
+        pickupLng,
+        pickupLandmark,
+        dropoffLat,
+        dropoffLng,
+        dropoffLandmark,
+        category = 'bajaj',
+        paymentMethod = 'cash',
+        promoCode,
+        notes,
+        stops = [],
+      } = req.body;
+
+      let resolvedRiderId = riderId;
+      if (!resolvedRiderId) {
+        const e164 = normalizePhone(phone);
+        if (!e164) {
+          return res.status(400).json({ error: 'riderId or valid phone required' });
+        }
+        const found = await query(`SELECT id FROM riders WHERE phone = $1`, [e164]);
+        if (found.rows[0]) {
+          resolvedRiderId = found.rows[0].id;
+          if (riderName) {
+            await query(
+              `UPDATE riders SET name = COALESCE(NULLIF(name, ''), $2), updated_at = NOW()
+               WHERE id = $1`,
+              [resolvedRiderId, String(riderName).trim()],
+            );
+          }
+        } else {
+          const created = await query(
+            `INSERT INTO riders (phone, name, is_guest)
+             VALUES ($1, $2, TRUE)
+             RETURNING id`,
+            [e164, String(riderName || 'Caller').trim()],
+          );
+          resolvedRiderId = created.rows[0].id;
+        }
+      }
+
+      if (
+        pickupLat == null ||
+        pickupLng == null ||
+        dropoffLat == null ||
+        dropoffLng == null
+      ) {
+        return res.status(400).json({ error: 'Pickup and dropoff coordinates required' });
+      }
+
+      const distanceKm = haversineKm(pickupLat, pickupLng, dropoffLat, dropoffLng);
+      const { durationMin } = estimateRoute(distanceKm);
+      const fare = await quoteFare({
+        category,
+        distanceKm,
+        durationMin,
+        promoCode,
+        stops: Array.isArray(stops) ? stops.length : 0,
+        pickupLat,
+        pickupLng,
+      });
+      const pin = String(Math.floor(1000 + Math.random() * 9000));
+      const startRadius = Number(process.env.MATCH_RADIUS_START_KM || 0.5);
+
+      const { rows } = await query(
+        `INSERT INTO trips (
+           rider_id, vehicle_category,
+           pickup_lat, pickup_lng, pickup_landmark,
+           dropoff_lat, dropoff_lng, dropoff_landmark, stops,
+           status, distance_km, duration_min,
+           fare_base, fare_distance, fare_time, surge_multiplier,
+           fuel_adjustment, promo_discount, fare_total,
+           payment_method, rider_pin, search_radius_km,
+           booked_by_admin_id, booking_channel, booking_notes
+         ) VALUES (
+           $1, $2,
+           $3, $4, $5,
+           $6, $7, $8, $9::jsonb,
+           'requested', $10, $11,
+           $12, $13, $14, $15,
+           $16, $17, $18,
+           $19, $20, $21,
+           $22, 'call_center', $23
+         ) RETURNING *`,
+        [
+          resolvedRiderId,
+          category,
+          pickupLat,
+          pickupLng,
+          pickupLandmark || 'Pickup',
+          dropoffLat,
+          dropoffLng,
+          dropoffLandmark || 'Drop-off',
+          JSON.stringify(stops || []),
+          distanceKm,
+          durationMin,
+          fare.base,
+          fare.distanceFee,
+          fare.timeFee,
+          fare.surgeMultiplier,
+          fare.fuelAdjustment,
+          fare.promoDiscount,
+          fare.total,
+          paymentMethod || 'cash',
+          pin,
+          startRadius,
+          req.user.sub,
+          notes ? String(notes).trim() : null,
+        ],
+      );
+      const trip = rows[0];
+      matchingEngine.start(trip.id);
+      await audit(req.user.sub, 'callcenter_book', {
+        tripId: trip.id,
+        riderId: resolvedRiderId,
+      });
+      res.status(201).json({ trip, riderPin: pin });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: e.message });
+    }
   },
 );
 
@@ -1060,4 +1777,10 @@ router.get(
   },
 );
 
-export default router;
+export function createAdminRouter(matching) {
+  matchingEngine = matching;
+  return router;
+}
+
+export { ROLE_PERMS, STAFF_ROLES, HIREABLE_ROLES };
+export default createAdminRouter;

@@ -111,10 +111,10 @@ class _DriverApplyState extends ConsumerState<_DriverApply> {
   Widget build(BuildContext context) {
     final isAm = ref.watch(authProvider).locale.languageCode == 'am';
     return Scaffold(
-      backgroundColor: GariColors.nightBlue,
+      backgroundColor: GariColors.cream,
       appBar: AppBar(
-        backgroundColor: GariColors.nightBlue,
-        foregroundColor: Colors.white,
+        backgroundColor: GariColors.cream,
+        foregroundColor: GariColors.nightBlue,
         title: Text(isAm ? 'እንደ ሹፌር መመዝገብ' : 'Driver sign up'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -126,32 +126,24 @@ class _DriverApplyState extends ConsumerState<_DriverApply> {
         children: [
           Text(
             isAm ? 'መለያ ፍጠር' : 'Create your driver account',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-            ),
+            style: AppText.title(context),
           ),
           const SizedBox(height: 8),
           Text(
             isAm
                 ? 'ከዚያ መኪና፣ ሰነዶች እና KYC ይቀጥላል — አስተዳዳሪ ያፀድቃል።'
                 : 'Next you will add vehicle photos & documents. Admin must approve before you go online.',
-            style: const TextStyle(
-              color: GariColors.muted,
-              fontSize: 14,
-              height: 1.45,
-            ),
+            style: AppText.caption(context, color: GariColors.muted),
           ),
           const SizedBox(height: 28),
-          _darkField(
+          _lightField(
             controller: name,
             icon: Icons.person_outline,
             hint: isAm ? 'ሙሉ ስም' : 'Full name',
             onChanged: (_) => setState(() => error = null),
           ),
           const SizedBox(height: 14),
-          _darkField(
+          _lightField(
             controller: phone,
             icon: Icons.phone_outlined,
             hint: isAm ? 'ስልክ (9xxxxxxxx)' : 'Phone (9xxxxxxxx)',
@@ -160,7 +152,7 @@ class _DriverApplyState extends ConsumerState<_DriverApply> {
           ),
           if (otpSent) ...[
             const SizedBox(height: 14),
-            _darkField(
+            _lightField(
               controller: otp,
               icon: Icons.lock_outline,
               hint: isAm ? 'OTP ኮድ' : 'OTP code',
@@ -172,74 +164,40 @@ class _DriverApplyState extends ConsumerState<_DriverApply> {
             const SizedBox(height: 12),
             Text(
               error!,
-              style: const TextStyle(
-                color: GariColors.crimson,
-                fontWeight: FontWeight.w600,
-              ),
+              style: AppText.caption(context, color: GariColors.crimson),
             ),
           ],
           const SizedBox(height: 20),
-          SizedBox(
-            height: 54,
-            child: ElevatedButton(
-              onPressed: busy
-                  ? null
-                  : (otpSent ? _createAccount : _sendOtp),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: GariColors.amber,
-                foregroundColor: const Color(0xFF1A1408),
-                elevation: 4,
-                shadowColor: GariColors.amberGlow,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-              child: busy
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Color(0xFF1A1408),
-                      ),
-                    )
-                  : Text(
-                      otpSent
-                          ? (isAm ? 'መለያ ፍጠር እና ቀጥል' : 'Create account & continue')
-                          : (isAm ? 'OTP ላክ' : 'Send OTP'),
-                      style: const TextStyle(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-            ),
+          GariPrimaryButton(
+            label: busy
+                ? '…'
+                : otpSent
+                    ? (isAm ? 'መለያ ፍጠር እና ቀጥል' : 'Create account & continue')
+                    : (isAm ? 'OTP ላክ' : 'Send OTP'),
+            enabled: !busy,
+            loading: busy,
+            onPressed: otpSent ? _createAccount : _sendOtp,
           ),
           const SizedBox(height: 16),
           TextButton(
             onPressed: () => context.go('/'),
             child: Text(
-              isAm ? 'ወደ መግቢያ ተመለስ' : 'Back to sign in',
-              style: const TextStyle(
-                color: GariColors.amber400,
-                fontWeight: FontWeight.w700,
-              ),
+              isAm ? 'አስቀድሞ መለያ አለዎት? ይግቡ' : 'Already a driver? Sign in',
+              style: AppText.label(context, color: GariColors.amberDeep),
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            isAm ? 'ሙከራ OTP: 123456' : 'Demo OTP: 123456',
+            isAm ? 'OTP 123456' : 'Demo OTP 123456',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.35),
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppText.caption(context, color: GariColors.muted),
           ),
         ],
       ),
     );
   }
 
-  Widget _darkField({
+  Widget _lightField({
     required TextEditingController controller,
     required IconData icon,
     required String hint,
@@ -251,30 +209,37 @@ class _DriverApplyState extends ConsumerState<_DriverApply> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: GariColors.border, width: 1.5),
       ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscure,
-        keyboardType: keyboardType,
-        onChanged: onChanged,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
-        ),
-        cursorColor: GariColors.amber,
-        decoration: InputDecoration(
-          icon: Icon(icon, color: const Color(0xFF5A6172), size: 20),
-          hintText: hint,
-          hintStyle: const TextStyle(
-            color: Color(0xFF5A6172),
-            fontWeight: FontWeight.w500,
+      child: Row(
+        children: [
+          Icon(icon, color: GariColors.muted, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              obscureText: obscure,
+              keyboardType: keyboardType,
+              onChanged: onChanged,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+                color: GariColors.nightBlue,
+              ),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                hintText: hint,
+                hintStyle: TextStyle(
+                  color: GariColors.muted,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
           ),
-          border: InputBorder.none,
-          suffixIcon: suffix,
-        ),
+          if (suffix != null) suffix,
+        ],
       ),
     );
   }
@@ -372,120 +337,53 @@ class _DriverLoginState extends ConsumerState<_DriverLogin> {
     final s = S.of(isAm);
 
     return Scaffold(
-      backgroundColor: GariColors.nightBlue,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(26, 8, 26, 80),
+      backgroundColor: GariColors.cream,
+      body: Column(
+        children: [
+          _DriverAuthHero(
+            isAm: isAm,
+            onLang: (am) async {
+              await ref
+                  .read(authProvider.notifier)
+                  .setLocale(Locale(am ? 'am' : 'en'));
+            },
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 26, 24, 32),
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: GariColors.amber,
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                      child: const Text(
-                        'G',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 19,
-                          color: Color(0xFF1A1408),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'GariGo Driver',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: GariColors.emeraldSoft,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: GariColors.emerald.withValues(alpha: 0.4),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                              color: GariColors.emerald,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            s.liveInAddis,
-                            style: const TextStyle(
-                              color: GariColors.emerald,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 28),
-                Row(
-                  children: [
-                    _earnMini('1,240 Br', isAm ? 'ሳምንታዊ አማካይ' : 'avg. weekly earnings'),
-                    const SizedBox(width: 10),
-                    _earnMini('4.8★', isAm ? 'አማካይ ደረጃ' : 'driver rating avg'),
-                  ],
-                ),
-                const SizedBox(height: 30),
                 Text(
-                  s.readyToEarn,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w800,
+                  (isAm ? 'ስልክ ወይም መለያ' : 'Phone or driver ID').toUpperCase(),
+                  style: AppText.caption(context, color: GariColors.muted)
+                      .copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  s.signInDriverId,
-                  style: const TextStyle(
-                    color: GariColors.muted,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 26),
-                _darkField(
+                const SizedBox(height: 8),
+                _authField(
                   controller: id,
-                  icon: Icons.badge_outlined,
                   hint: s.driverIdOrPhone,
                   keyboardType: TextInputType.phone,
+                  prefix: Icons.badge_outlined,
                   onChanged: (_) => setState(() => error = null),
                 ),
-                const SizedBox(height: 14),
-                _darkField(
+                const SizedBox(height: 16),
+                Text(
+                  s.pinHint.toUpperCase(),
+                  style: AppText.caption(context, color: GariColors.muted)
+                      .copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _authField(
                   controller: pin,
-                  icon: Icons.lock_outline,
-                  hint: s.pinHint,
+                  hint: '••••••',
                   obscure: obscure,
                   keyboardType: TextInputType.number,
+                  prefix: Icons.lock_outline,
                   onChanged: (_) => setState(() => error = null),
                   suffix: IconButton(
                     onPressed: () => setState(() => obscure = !obscure),
@@ -493,7 +391,7 @@ class _DriverLoginState extends ConsumerState<_DriverLogin> {
                       obscure
                           ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
-                      color: const Color(0xFF5A6172),
+                      color: GariColors.muted,
                       size: 18,
                     ),
                   ),
@@ -502,157 +400,78 @@ class _DriverLoginState extends ConsumerState<_DriverLogin> {
                   const SizedBox(height: 10),
                   Text(
                     error!,
-                    style: const TextStyle(
-                      color: GariColors.crimson,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12.5,
-                    ),
+                    style: AppText.caption(context, color: GariColors.crimson),
                   ),
                 ],
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 54,
-                  child: ElevatedButton(
-                    onPressed: busy ? null : _goOnline,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: GariColors.amber,
-                      foregroundColor: const Color(0xFF1A1408),
-                      elevation: 4,
-                      shadowColor: GariColors.amberGlow,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                    ),
-                    child: busy
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Color(0xFF1A1408),
-                            ),
-                          )
-                        : Text(
-                            s.goOnline,
-                            style: const TextStyle(
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: GestureDetector(
-                    onTap: busy ? null : _applyToDrive,
-                    child: Text.rich(
-                      TextSpan(
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF5A6172),
-                        ),
-                        children: [
-                          TextSpan(text: '${s.newDriver} '),
-                          TextSpan(
-                            text: s.applyToDrive,
-                            style: const TextStyle(
-                              color: GariColors.amber400,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
                 const SizedBox(height: 18),
-                Text(
-                  '${s.demoOtp} · existing approved: 911000009',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.35),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
+                GariPrimaryButton(
+                  label: s.goOnline,
+                  enabled: !busy,
+                  loading: busy,
+                  onPressed: _goOnline,
+                ),
+                const SizedBox(height: 14),
+                TextButton(
+                  onPressed: busy ? null : _applyToDrive,
+                  child: Text.rich(
+                    TextSpan(
+                      style: AppText.caption(context, color: GariColors.muted),
+                      children: [
+                        TextSpan(text: '${s.newDriver} '),
+                        TextSpan(
+                          text: s.applyToDrive,
+                          style: const TextStyle(
+                            color: GariColors.nightBlue,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${s.demoOtp}',
+                  textAlign: TextAlign.center,
+                  style: AppText.caption(context, color: GariColors.amberDeep),
                 ),
                 const SizedBox(height: 20),
                 Row(
+                  children: [
+                    const Expanded(child: Divider(color: GariColors.border)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        isAm ? 'ተሽከርካሪዎች' : 'Vehicle types',
+                        style: AppText.caption(context, color: GariColors.muted),
+                      ),
+                    ),
+                    const Expanded(child: Divider(color: GariColors.border)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _langChip('EN', !isAm, () async {
-                      await ref
-                          .read(authProvider.notifier)
-                          .setLocale(const Locale('en'));
-                    }),
-                    const SizedBox(width: 8),
-                    _langChip('አማ', isAm, () async {
-                      await ref
-                          .read(authProvider.notifier)
-                          .setLocale(const Locale('am'));
-                    }),
+                    _vchip(Icons.airport_shuttle_outlined, 'Bajaj'),
+                    _dot(),
+                    _vchip(Icons.two_wheeler_outlined, 'Moto'),
+                    _dot(),
+                    _vchip(Icons.directions_car_outlined, 'Car'),
                   ],
                 ),
               ],
             ),
-            Positioned(
-              left: 26,
-              right: 26,
-              bottom: 26,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _vchip(Icons.airport_shuttle_outlined, 'Bajaj'),
-                  _dot(),
-                  _vchip(Icons.two_wheeler_outlined, 'Moto'),
-                  _dot(),
-                  _vchip(Icons.directions_car_outlined, 'Car'),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _earnMini(String n, String l) => Expanded(
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                n,
-                style: const TextStyle(
-                  color: GariColors.amber400,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                l,
-                style: const TextStyle(
-                  color: GariColors.muted,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-  Widget _darkField({
+  Widget _authField({
     required TextEditingController controller,
-    required IconData icon,
     required String hint,
+    required IconData prefix,
     bool obscure = false,
     TextInputType? keyboardType,
     Widget? suffix,
@@ -661,14 +480,14 @@ class _DriverLoginState extends ConsumerState<_DriverLogin> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1.5),
+        border: Border.all(color: GariColors.border, width: 1.5),
       ),
       child: Row(
         children: [
-          Icon(icon, color: GariColors.amber400, size: 18),
-          const SizedBox(width: 10),
+          Icon(prefix, color: GariColors.muted, size: 20),
+          const SizedBox(width: 12),
           Expanded(
             child: TextField(
               controller: controller,
@@ -676,18 +495,16 @@ class _DriverLoginState extends ConsumerState<_DriverLogin> {
               keyboardType: keyboardType,
               onChanged: onChanged,
               style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
                 fontWeight: FontWeight.w600,
+                fontSize: 15,
+                color: GariColors.nightBlue,
               ),
-              cursorColor: GariColors.amber,
               decoration: InputDecoration(
                 border: InputBorder.none,
                 hintText: hint,
-                hintStyle: const TextStyle(
-                  color: Color(0xFF5A6172),
+                hintStyle: TextStyle(
+                  color: GariColors.muted,
                   fontWeight: FontWeight.w500,
-                  fontSize: 15,
                 ),
               ),
             ),
@@ -698,39 +515,15 @@ class _DriverLoginState extends ConsumerState<_DriverLogin> {
     );
   }
 
-  Widget _langChip(String t, bool on, VoidCallback tap) => GestureDetector(
-        onTap: tap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: on ? GariColors.amber : Colors.white.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: on
-                  ? GariColors.amber
-                  : Colors.white.withValues(alpha: 0.12),
-            ),
-          ),
-          child: Text(
-            t,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              color: on ? const Color(0xFF1A1408) : const Color(0xFFB9C0D1),
-            ),
-          ),
-        ),
-      );
-
   Widget _vchip(IconData icon, String label) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: const Color(0xFF5A6172)),
+          Icon(icon, size: 15, color: GariColors.muted),
           const SizedBox(width: 6),
           Text(
             label,
             style: const TextStyle(
-              color: Color(0xFF5A6172),
+              color: GariColors.muted,
               fontSize: 11,
               fontWeight: FontWeight.w700,
             ),
@@ -740,7 +533,7 @@ class _DriverLoginState extends ConsumerState<_DriverLogin> {
 
   Widget _dot() => const Padding(
         padding: EdgeInsets.symmetric(horizontal: 10),
-        child: Text('·', style: TextStyle(color: Color(0xFF333C50))),
+        child: Text('·', style: TextStyle(color: GariColors.border)),
       );
 }
 
@@ -780,17 +573,23 @@ class _OtpState extends ConsumerState<_Otp> {
 
   @override
   Widget build(BuildContext context) {
+    final isAm = ref.watch(authProvider).locale.languageCode == 'am';
     return Scaffold(
-      backgroundColor: GariColors.nightBlue,
+      backgroundColor: GariColors.cream,
       appBar: AppBar(
-        backgroundColor: GariColors.nightBlue,
-        foregroundColor: Colors.white,
+        backgroundColor: GariColors.cream,
+        foregroundColor: GariColors.nightBlue,
         title: const Text('OTP'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
+            Text(
+              isAm ? 'ኮድ ያስገቡ' : 'Enter verification code',
+              style: AppText.title(context),
+            ),
+            const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: List.generate(
@@ -803,25 +602,26 @@ class _OtpState extends ConsumerState<_Otp> {
                     maxLength: 1,
                     keyboardType: TextInputType.number,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: GariColors.nightBlue,
                       fontWeight: FontWeight.w800,
                       fontSize: 20,
                     ),
                     decoration: InputDecoration(
                       counterText: '',
                       filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.06),
+                      fillColor: Colors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.12),
-                        ),
+                        borderSide: const BorderSide(color: GariColors.border),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.12),
-                        ),
+                        borderSide: const BorderSide(color: GariColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: GariColors.amber, width: 1.5),
                       ),
                     ),
                     onChanged: (v) {
@@ -836,8 +636,8 @@ class _OtpState extends ConsumerState<_Otp> {
             ),
             const Spacer(),
             Text(
-              S.of(ref.watch(authProvider).locale.languageCode == 'am').demoOtp,
-              style: AppText.caption(context, color: GariColors.amber400),
+              S.of(isAm).demoOtp,
+              style: AppText.caption(context, color: GariColors.amberDeep),
             ),
           ],
         ),
@@ -1275,20 +1075,34 @@ class _SelfieState extends ConsumerState<_Selfie> {
   Widget build(BuildContext context) {
     final has = ref.watch(apiProvider).docs[DocumentType.selfie]?.url != null;
     return Scaffold(
-      backgroundColor: GariColors.nightBlue,
-      appBar: AppBar(title: const Text('Driver photo')),
+      backgroundColor: GariColors.cream,
+      appBar: AppBar(
+        backgroundColor: GariColors.cream,
+        foregroundColor: GariColors.nightBlue,
+        title: const Text('Driver photo'),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.person, size: 120, color: GariColors.amber),
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: GariColors.border, width: 1.5),
+                ),
+                child: const Icon(Icons.person,
+                    size: 64, color: GariColors.amberDeep),
+              ),
               const SizedBox(height: 16),
               Text(
                 'Clear face photo for KYC verification',
                 textAlign: TextAlign.center,
-                style: AppText.body(context, color: Colors.white70),
+                style: AppText.body(context, color: GariColors.muted),
               ),
               if (error != null) ...[
                 const SizedBox(height: 12),
@@ -1562,6 +1376,10 @@ class _Dash extends ConsumerStatefulWidget {
 class _DashState extends ConsumerState<_Dash>
     with SingleTickerProviderStateMixin {
   late final AnimationController _radar;
+  int todayBr = 0;
+  int todayTrips = 0;
+  bool _listening = false;
+  Timer? _offerPoll;
 
   @override
   void initState() {
@@ -1570,10 +1388,33 @@ class _DashState extends ConsumerState<_Dash>
       vsync: this,
       duration: const Duration(milliseconds: 2400),
     )..repeat();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadToday();
+      final online =
+          ref.read(authProvider).driver?.onlineStatus == OnlineStatus.online;
+      if (online) {
+        _listenOffers(force: true);
+        _startOfferPoll();
+      }
+    });
+  }
+
+  Future<void> _loadToday() async {
+    try {
+      final bundle = await ref.read(apiProvider).earningsBundle();
+      final today = Map<String, dynamic>.from(bundle['today'] as Map? ?? {});
+      if (!mounted) return;
+      setState(() {
+        todayBr = (today['gross'] as num?)?.round() ?? 0;
+        todayTrips = (today['trips'] as num?)?.round() ?? 0;
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _offerPoll?.cancel();
+    OfferRing.stop();
     _radar.dispose();
     super.dispose();
   }
@@ -1584,7 +1425,17 @@ class _DashState extends ConsumerState<_Dash>
     try {
       await ref.read(apiProvider).setOnline(!online);
       ref.read(authProvider.notifier).upd(ref.read(apiProvider).driver!);
-      if (!online) _listenOffers();
+      if (!online) {
+        _listenOffers(force: true);
+        _startOfferPoll();
+      } else {
+        _offerPoll?.cancel();
+        _offerPoll = null;
+        OfferRing.stop();
+        final socket = ref.read(apiProvider).client.socket;
+        socket?.off('ride_request');
+        _listening = false;
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1594,39 +1445,63 @@ class _DashState extends ConsumerState<_Dash>
     }
   }
 
-  void _listenOffers() {
+  void _startOfferPoll() {
+    _offerPoll?.cancel();
+    _offerPoll = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (!mounted) return;
+      if (ref.read(offerProvider) != null) return;
+      final online =
+          ref.read(authProvider).driver?.onlineStatus == OnlineStatus.online;
+      if (!online) return;
+      try {
+        final m = await ref.read(apiProvider).client.driverPendingOffer();
+        if (m != null && mounted && ref.read(offerProvider) == null) {
+          _presentOffer(m);
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _presentOffer(Map<String, dynamic> m) {
+    if (ref.read(offerProvider) != null) return;
+    if (ref.read(apiProvider).prefs.getBool('offer_ring') ?? true) {
+      OfferRing.start();
+    }
+    ref.read(offerProvider.notifier).state = TripOffer(
+      id: m['tripId'].toString(),
+      pickupLandmark: m['pickupLandmark']?.toString() ?? 'Pickup',
+      pickupDistanceKm: (m['pickupDistanceKm'] as num?)?.toDouble() ?? 0.5,
+      destinationArea: m['destinationArea']?.toString() ?? 'Drop-off',
+      estimatedFare: (m['estimatedFare'] as num?)?.round() ?? 0,
+      estimatedDurationMin: (m['estimatedDurationMin'] as num?)?.round() ?? 15,
+      acceptWindowSec: (m['acceptWindowSec'] as num?)?.round() ?? 20,
+      riderPin: m['riderPin']?.toString() ?? '0000',
+      category: m['category']?.toString(),
+      tripDistanceKm: (m['tripDistanceKm'] as num?)?.toDouble(),
+      paymentMethod: m['paymentMethod']?.toString(),
+      riderName: m['riderName']?.toString(),
+      riderPhotoUrl: m['riderPhotoUrl']?.toString(),
+      riderRating: (m['riderRating'] as num?)?.toDouble(),
+    );
+    showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _OfferSheet(),
+    ).whenComplete(OfferRing.stop);
+  }
+
+  void _listenOffers({bool force = false}) {
+    if (_listening && !force) return;
+    _listening = true;
     final socket = ref.read(apiProvider).client.socket;
     socket?.off('ride_request');
     socket?.on('ride_request', (data) {
       if (!mounted) return;
       final m = Map<String, dynamic>.from(data as Map);
-      ref.read(offerProvider.notifier).state = TripOffer(
-        id: m['tripId'].toString(),
-        pickupLandmark: m['pickupLandmark']?.toString() ?? 'Pickup',
-        pickupDistanceKm: (m['pickupDistanceKm'] as num?)?.toDouble() ?? 0.5,
-        destinationArea: m['destinationArea']?.toString() ?? 'Drop-off',
-        estimatedFare: (m['estimatedFare'] as num?)?.round() ?? 0,
-        estimatedDurationMin: (m['estimatedDurationMin'] as num?)?.round() ?? 15,
-        acceptWindowSec: (m['acceptWindowSec'] as num?)?.round() ?? 14,
-        riderPin: m['riderPin']?.toString() ?? '0000',
-      );
-      showModalBottomSheet<void>(
-        context: context,
-        isDismissible: false,
-        enableDrag: false,
-        backgroundColor: Colors.transparent,
-        builder: (_) => const _OfferSheet(),
-      );
+      _presentOffer(m);
     });
-  }
-
-  void _demoOffer() {
-    // Kept only as a manual refresh tip — real offers come via socket.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Stay online — trip offers arrive from the API when a rider requests.'),
-      ),
-    );
   }
 
   @override
@@ -1637,7 +1512,7 @@ class _DashState extends ConsumerState<_Dash>
     final s = S.of(isAm);
 
     return Scaffold(
-      backgroundColor: GariColors.nightBlue,
+      backgroundColor: GariColors.cream,
       body: Stack(
         children: [
           Positioned.fill(
@@ -1645,10 +1520,10 @@ class _DashState extends ConsumerState<_Dash>
               colorFilter: online
                   ? const ColorFilter.mode(Colors.transparent, BlendMode.dst)
                   : const ColorFilter.matrix(<double>[
-                      0.4, 0.4, 0.4, 0, 0,
-                      0.4, 0.4, 0.4, 0, 0,
-                      0.4, 0.4, 0.4, 0, 0,
-                      0, 0, 0, 0.85, 0,
+                      0.55, 0.55, 0.55, 0, 0,
+                      0.55, 0.55, 0.55, 0, 0,
+                      0.55, 0.55, 0.55, 0, 0,
+                      0, 0, 0, 0.9, 0,
                     ]),
               child: const GariMapCanvas(
                 mode: GariMapMode.day,
@@ -1667,69 +1542,92 @@ class _DashState extends ConsumerState<_Dash>
                     height: 44,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: GariColors.nightBlue,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: GariColors.border, width: 1.5),
                     ),
                     child: Text(
                       'G',
-                      style: AppText.headline(
-                        context,
-                        color: GariColors.amber400,
+                      style: AppText.headline(context, color: GariColors.amberDeep),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Material(
+                      color: online
+                          ? GariColors.emeraldSoft
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      child: InkWell(
+                        onTap: _toggleOnline,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: online
+                                  ? GariColors.emerald.withValues(alpha: 0.4)
+                                  : GariColors.border,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: online
+                                      ? GariColors.emerald
+                                      : GariColors.muted,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  online ? s.youreOnline : s.youreOffline,
+                                  style: TextStyle(
+                                    color: online
+                                        ? GariColors.emerald
+                                        : GariColors.nightBlue,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Switch.adaptive(
+                                value: online,
+                                activeTrackColor: GariColors.emerald,
+                                onChanged: (_) => _toggleOnline(),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  if (online) ...[
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: GariColors.emeraldSoft,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: GariColors.emerald.withValues(alpha: 0.4),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 7,
-                              height: 7,
-                              decoration: BoxDecoration(
-                                color: GariColors.emerald,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: GariColors.emerald.withValues(
-                                      alpha: 0.35,
-                                    ),
-                                    blurRadius: 6,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              s.youreOnline,
-                              style: const TextStyle(
-                                color: GariColors.emerald,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ] else
-                    const Spacer(),
                   const SizedBox(width: 10),
-                  _glassIcon(Icons.notifications_none_rounded),
+                  GestureDetector(
+                    onTap: () => context.push('/profile/settings'),
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: GariColors.border, width: 1.5),
+                      ),
+                      child: const Icon(Icons.tune_rounded,
+                          color: GariColors.nightBlue, size: 20),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1742,67 +1640,64 @@ class _DashState extends ConsumerState<_Dash>
                   GestureDetector(
                     onTap: _toggleOnline,
                     child: Container(
-                      width: 180,
-                      height: 180,
+                      width: 168,
+                      height: 168,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.18),
-                          width: 2,
-                        ),
-                      ),
-                      child: Container(
-                        width: 148,
-                        height: 148,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.06),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.16),
+                        color: Colors.white,
+                        border: Border.all(color: GariColors.border, width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: GariColors.nightBlue.withValues(alpha: 0.08),
+                            blurRadius: 24,
+                            offset: const Offset(0, 8),
                           ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: GariColors.amber,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Icon(
                               Icons.power_settings_new_rounded,
-                              color: Colors.white.withValues(alpha: 0.35),
-                              size: 30,
+                              color: Color(0xFF1A1408),
+                              size: 28,
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              s.youreOffline,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.55),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                              ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            s.youreOffline,
+                            style: const TextStyle(
+                              color: GariColors.nightBlue,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
                             ),
-                            Text(
-                              s.tapToGoOnline,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.35),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                          Text(
+                            s.tapToGoOnline,
+                            style: AppText.caption(context, color: GariColors.muted),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 22),
-                  Text(
-                    isAm
-                        ? 'ኦንላይን ሆነው በአቅራቢያዎ ጉዞ ጥያቄዎችን ይቀበሉ።'
-                        : 'Go online to start receiving trip requests near you.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.35),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12.5,
-                      height: 1.5,
+                  const SizedBox(height: 18),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: Text(
+                      isAm
+                          ? 'ኦንላይን ሆነው በአቅራቢያዎ ጉዞ ጥያቄዎችን ይቀበሉ።'
+                          : 'Go online to start receiving trip requests near you.',
+                      textAlign: TextAlign.center,
+                      style: AppText.caption(context, color: GariColors.muted),
                     ),
                   ),
                 ],
@@ -1838,17 +1733,9 @@ class _DashState extends ConsumerState<_Dash>
                         Container(
                           width: 14,
                           height: 14,
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             color: GariColors.amber,
                             shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color:
-                                    GariColors.amber.withValues(alpha: 0.35),
-                                blurRadius: 8,
-                                spreadRadius: 3,
-                              ),
-                            ],
                           ),
                         ),
                       ],
@@ -1867,64 +1754,50 @@ class _DashState extends ConsumerState<_Dash>
                   borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
                   boxShadow: [
                     BoxShadow(
-                      color: Color(0x40000000),
+                      color: Color(0x28000000),
                       blurRadius: 24,
                       offset: Offset(0, -8),
                     ),
                   ],
                 ),
                 child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        s.searchingTrips,
-                        style: AppText.headline(context),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(s.searchingTrips, style: AppText.headline(context)),
+                    const SizedBox(height: 4),
+                    Text(
+                      s.stayBusyAreas,
+                      style: AppText.caption(context, color: GariColors.muted),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        _onlineStat('$todayBr Br', isAm ? 'ዛሬ' : 'TODAY'),
+                        const SizedBox(width: 8),
+                        _onlineStat(
+                          '${(d.matchRadiusKm * 1000).round()} m',
+                          isAm ? 'ራዲየስ' : 'RADIUS',
+                        ),
+                        const SizedBox(width: 8),
+                        _onlineStat('$todayTrips', isAm ? 'ጉዞ' : 'TRIPS'),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    GariPrimaryButton(
+                      label: isAm ? 'ኦፍላይን ሂድ' : 'Go offline',
+                      onPressed: _toggleOnline,
+                    ),
+                    TextButton(
+                      onPressed: () => context.push('/profile/settings'),
+                      child: Text(
+                        isAm ? 'ራዲየስ ቀይር' : 'Job radius',
+                        style: const TextStyle(
+                          color: GariColors.amberDeep,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        s.stayBusyAreas,
-                        style: AppText.caption(context, color: GariColors.muted),
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          _onlineStat('890 Br', isAm ? 'ዛሬ' : 'TODAY'),
-                          const SizedBox(width: 8),
-                          _onlineStat('2h 14m', isAm ? 'ኦንላይን' : 'ONLINE'),
-                          const SizedBox(width: 8),
-                          _onlineStat('12', isAm ? 'ጉዞ' : 'TRIPS'),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextButton(
-                              onPressed: _toggleOnline,
-                              child: Text(
-                                isAm ? 'ኦፍላይን ሂድ' : 'Go offline',
-                                style: const TextStyle(
-                                  color: GariColors.muted,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: TextButton(
-                              onPressed: _demoOffer,
-                              child: Text(
-                                isAm ? 'ጥያቄዎችን አድስ' : 'Waiting for offers…',
-                                style: const TextStyle(
-                                  color: GariColors.amberDeep,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1936,13 +1809,26 @@ class _DashState extends ConsumerState<_Dash>
               bottom: 16,
               child: SafeArea(
                 top: false,
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _statPill('890 Br', isAm ? 'ዛሬ' : 'Today'),
-                    const SizedBox(width: 8),
-                    _statPill('12', isAm ? 'ጉዞ' : 'Trips'),
-                    const SizedBox(width: 8),
-                    _statPill('4.9★', isAm ? 'ደረጃ' : 'Rating'),
+                    GariPrimaryButton(
+                      label: isAm ? 'ኦንላይን ሂድ' : 'Go online',
+                      onPressed: _toggleOnline,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _statPill('$todayBr Br', isAm ? 'ዛሬ' : 'Today'),
+                        const SizedBox(width: 8),
+                        _statPill('$todayTrips', isAm ? 'ጉዞ' : 'Trips'),
+                        const SizedBox(width: 8),
+                        _statPill(
+                          '${d.rating.toStringAsFixed(1)}★',
+                          isAm ? 'ደረጃ' : 'Rating',
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1952,32 +1838,20 @@ class _DashState extends ConsumerState<_Dash>
     );
   }
 
-  Widget _glassIcon(IconData icon) => Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-        ),
-        child: Icon(icon, color: const Color(0xFFEDEFF5), size: 20),
-      );
-
   Widget _statPill(String n, String l) => Expanded(
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            border: Border.all(color: GariColors.border, width: 1.5),
           ),
           child: Column(
             children: [
               Text(
                 n,
                 style: const TextStyle(
-                  color: GariColors.amber400,
+                  color: GariColors.nightBlue,
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
                 ),
@@ -1985,8 +1859,8 @@ class _DashState extends ConsumerState<_Dash>
               const SizedBox(height: 2),
               Text(
                 l.toUpperCase(),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.45),
+                style: const TextStyle(
+                  color: GariColors.muted,
                   fontWeight: FontWeight.w700,
                   fontSize: 10,
                   letterSpacing: 0.3,
@@ -2030,6 +1904,43 @@ class _DashState extends ConsumerState<_Dash>
       );
 }
 
+class _DriverAuthHero extends StatelessWidget {
+  const _DriverAuthHero({
+    required this.isAm,
+    required this.onLang,
+  });
+  final bool isAm;
+  final ValueChanged<bool> onLang;
+
+  @override
+  Widget build(BuildContext context) {
+    return GariBillboardHero(
+      isAm: isAm,
+      onLang: onLang,
+      brandLabel: 'GariGo',
+      headline: TextSpan(
+        children: isAm
+            ? const [
+                TextSpan(text: 'አዲስ፣ '),
+                TextSpan(
+                  text: 'ኦንላይን ሂድ',
+                  style: TextStyle(color: GariColors.amber),
+                ),
+                TextSpan(text: '\nገቢ ማግኘት ይጀምሩ።'),
+              ]
+            : const [
+                TextSpan(text: 'Addis, '),
+                TextSpan(
+                  text: 'go online',
+                  style: TextStyle(color: GariColors.amber),
+                ),
+                TextSpan(text: '\nand start earning.'),
+              ],
+      ),
+    );
+  }
+}
+
 class _OfferSheet extends ConsumerStatefulWidget {
   const _OfferSheet();
   @override
@@ -2063,6 +1974,7 @@ class _OfferSheetState extends ConsumerState<_OfferSheet> {
 
   void decline() async {
     t?.cancel();
+    OfferRing.stop();
     final o = ref.read(offerProvider);
     if (o != null) {
       try {
@@ -2133,7 +2045,7 @@ class _OfferSheetState extends ConsumerState<_OfferSheet> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '$distM m away · Bajaj',
+                        '$distM m away · ${(o.category ?? ref.watch(authProvider).driver?.vehicleCategory?.name ?? 'ride').toUpperCase()}',
                         style: const TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
@@ -2146,6 +2058,64 @@ class _OfferSheetState extends ConsumerState<_OfferSheet> {
               ],
             ),
             const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: GariColors.border, width: 1.5),
+              ),
+              child: Row(
+                children: [
+                  GariProfileAvatar(
+                    imageUrl: () {
+                      final u = GariConfig.mediaUrl(o.riderPhotoUrl);
+                      return u.isEmpty ? null : u;
+                    }(),
+                    fallbackLetter: o.riderName ?? 'R',
+                    radius: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          o.riderName ?? (isAm ? 'ተሳፋሪ' : 'Rider'),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: GariColors.nightBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          isAm
+                              ? 'ስልክ ከተቀበሉ በኋላ ይታያል'
+                              : 'Phone shown after you accept',
+                          style: AppText.caption(context,
+                              color: GariColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (o.riderRating != null)
+                    Row(
+                      children: [
+                        const Icon(Icons.star, size: 14, color: GariColors.amber),
+                        Text(
+                          ' ${o.riderRating!.toStringAsFixed(1)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: GariColors.nightBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -2264,7 +2234,7 @@ class _OfferSheetState extends ConsumerState<_OfferSheet> {
                         ),
                       ),
                       Text(
-                        '6.4 km',
+                        '${(o.tripDistanceKm ?? o.pickupDistanceKm).toStringAsFixed(1)} km',
                         style: const TextStyle(
                           fontSize: 12,
                           color: GariColors.nightBlue,
@@ -2325,16 +2295,27 @@ class _OfferSheetState extends ConsumerState<_OfferSheet> {
                   child: GestureDetector(
                     onTap: () async {
                       t?.cancel();
+                      OfferRing.stop();
                       try {
-                        await ref.read(apiProvider).client.acceptTrip(o.id);
+                        final res =
+                            await ref.read(apiProvider).client.acceptTrip(o.id);
                         ref.read(apiProvider).client.joinTrip(o.id);
+                        final rider = Map<String, dynamic>.from(
+                            res['rider'] as Map? ?? {});
                         ref.read(activeTripProvider.notifier).state = ActiveTrip(
                           id: o.id,
-                          riderName: o.riderName,
+                          riderName: rider['name']?.toString() ??
+                              o.riderName ??
+                              'Rider',
                           pickupLandmark: o.pickupLandmark,
                           destinationLandmark: o.destinationArea,
                           estimatedFare: o.estimatedFare,
                           riderPin: o.riderPin,
+                          riderPhotoUrl: rider['photoUrl']?.toString() ??
+                              o.riderPhotoUrl,
+                          riderPhone: rider['phone']?.toString(),
+                          riderRating: (rider['rating'] as num?)?.toDouble() ??
+                              o.riderRating,
                         );
                         ref.read(offerProvider.notifier).state = null;
                         if (context.mounted) {
@@ -2397,8 +2378,8 @@ class _PickupState extends ConsumerState<_Pickup> {
   Widget build(BuildContext context) {
     final trip = ref.watch(activeTripProvider);
     final s = S.of(ref.watch(authProvider).locale.languageCode == 'am');
-    final name = trip?.riderName ?? 'Selam A.';
-    final initial = name.isNotEmpty ? name[0] : 'S';
+    final name = trip?.riderName ?? 'Rider';
+    final isAm = ref.watch(authProvider).locale.languageCode == 'am';
 
     return Scaffold(
       body: Stack(
@@ -2426,9 +2407,9 @@ class _PickupState extends ConsumerState<_Pickup> {
                   const Spacer(),
                   _mapChip(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: const Text(
-                      '6.4 km · 18 min',
-                      style: TextStyle(
+                    child: Text(
+                      trip == null ? '—' : '${trip.estimatedFare} Br',
+                      style: const TextStyle(
                         color: Color(0xFFEDEFF5),
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,
@@ -2454,31 +2435,31 @@ class _PickupState extends ConsumerState<_Pickup> {
                     color: Colors.white.withValues(alpha: 0.1),
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.turn_right, color: GariColors.amber400, size: 20),
-                    SizedBox(width: 10),
+                    const Icon(Icons.turn_right, color: GariColors.amber400, size: 20),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Head north on Bole Rd',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
+                            Text(
+                              trip?.pickupLandmark ?? 'Navigate to pickup',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 1),
-                          Text(
-                            'then turn right onto Cameroon St',
-                            style: TextStyle(
-                              color: GariColors.muted,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
+                            const SizedBox(height: 1),
+                            Text(
+                              trip?.destinationLandmark ?? '',
+                              style: const TextStyle(
+                                color: GariColors.muted,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -2503,21 +2484,25 @@ class _PickupState extends ConsumerState<_Pickup> {
                   children: [
                     Row(
                       children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          alignment: Alignment.center,
-                          decoration: const BoxDecoration(
-                            color: GariColors.nightBlue,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            initial,
-                            style: const TextStyle(
-                              color: GariColors.amber400,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                            ),
+                        GariProfileAvatar(
+                          imageUrl: () {
+                            final u = GariConfig.mediaUrl(trip?.riderPhotoUrl);
+                            return u.isEmpty ? null : u;
+                          }(),
+                          fallbackLetter: name,
+                          radius: 24,
+                          onTap: () => showGariContactSheet(
+                            context,
+                            title: isAm ? 'ተሳፋሪ' : 'Rider',
+                            name: name,
+                            photoUrl: () {
+                              final u = GariConfig.mediaUrl(trip?.riderPhotoUrl);
+                              return u.isEmpty ? null : u;
+                            }(),
+                            phone: trip?.riderPhone,
+                            subtitle: trip?.riderRating != null
+                                ? '${trip!.riderRating!.toStringAsFixed(1)} ★'
+                                : null,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -2527,58 +2512,60 @@ class _PickupState extends ConsumerState<_Pickup> {
                             children: [
                               Row(
                                 children: [
-                                  Text(
-                                    name,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                      color: GariColors.nightBlue,
+                                  Flexible(
+                                    child: Text(
+                                      name,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: GariColors.nightBlue,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  const Icon(
-                                    Icons.star,
-                                    size: 12,
-                                    color: GariColors.amber,
-                                  ),
-                                  const Text(
-                                    ' 4.9',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: GariColors.nightBlue,
+                                  if (trip?.riderRating != null) ...[
+                                    const SizedBox(width: 6),
+                                    const Icon(
+                                      Icons.star,
+                                      size: 12,
+                                      color: GariColors.amber,
                                     ),
-                                  ),
+                                    Text(
+                                      ' ${trip!.riderRating!.toStringAsFixed(1)}',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: GariColors.nightBlue,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Picking up · 2 min away',
+                                trip?.riderPhone ??
+                                    (ref.watch(authProvider)
+                                                .locale
+                                                .languageCode ==
+                                            'am'
+                                        ? 'ስልክ በመጫን…'
+                                        : 'Loading phone…'),
                                 style: AppText.caption(
                                   context,
-                                  color: GariColors.muted,
+                                  color: GariColors.amberDeep,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        Container(
-                          width: 44,
-                          height: 44,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: GariColors.border,
-                              width: 1.5,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.phone,
-                            color: GariColors.nightBlue,
-                            size: 18,
-                          ),
+                        _circleAction(
+                          Icons.phone,
+                          () => _callRider(context, ref, widget.id),
+                        ),
+                        const SizedBox(width: 8),
+                        _circleAction(
+                          Icons.chat_bubble_outline,
+                          () => context.push('/trip/${widget.id}/chat'),
                         ),
                       ],
                     ),
@@ -2702,6 +2689,55 @@ class _PickupState extends ConsumerState<_Pickup> {
   }
 }
 
+Widget _circleAction(IconData icon, VoidCallback onTap) {
+  return Material(
+    color: Colors.white,
+    shape: CircleBorder(
+      side: BorderSide(color: GariColors.border, width: 1.5),
+    ),
+    child: InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: Icon(icon, color: GariColors.nightBlue, size: 18),
+      ),
+    ),
+  );
+}
+
+Future<void> _callRider(
+  BuildContext context,
+  WidgetRef ref,
+  String tripId,
+) async {
+  var phone = ref.read(activeTripProvider)?.riderPhone;
+  try {
+    final session =
+        await ref.read(apiProvider).client.createCallSession(tripId);
+    phone = session['counterpartPhone']?.toString() ?? phone;
+    if (phone != null && phone.isNotEmpty) {
+      ref.read(activeTripProvider.notifier).state =
+          ref.read(activeTripProvider)?.copyWith(riderPhone: phone);
+    }
+  } catch (_) {}
+  if (phone == null || phone.isEmpty) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Phone number unavailable')),
+      );
+    }
+    return;
+  }
+  final uri = Uri(scheme: 'tel', path: phone);
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri);
+  } else if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(phone)));
+  }
+}
+
 class _Pin extends ConsumerStatefulWidget {
   const _Pin({required this.id});
   final String id;
@@ -2739,7 +2775,7 @@ class _PinState extends ConsumerState<_Pin> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Demo PIN: ${trip?.riderPin ?? '4821'}',
+              'PIN: ${trip?.riderPin ?? '—'}',
               style: AppText.caption(context, color: GariColors.muted),
             ),
             const SizedBox(height: 24),
@@ -2802,27 +2838,10 @@ class _Active extends ConsumerStatefulWidget {
 }
 
 class _ActiveState extends ConsumerState<_Active> {
-  int fare = 42;
-  Timer? t;
-
-  @override
-  void initState() {
-    super.initState();
-    t = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => setState(() => fare++),
-    );
-  }
-
-  @override
-  void dispose() {
-    t?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final trip = ref.watch(activeTripProvider);
+    final fare = trip?.estimatedFare ?? 0;
     final s = S.of(ref.watch(authProvider).locale.languageCode == 'am');
     return Scaffold(
       body: Stack(
@@ -2883,11 +2902,52 @@ class _ActiveState extends ConsumerState<_Active> {
                       'Dropping off ${trip?.riderName ?? ''}',
                       style: AppText.caption(context, color: GariColors.muted),
                     ),
-                    const SizedBox(height: 16),
+                    if (trip?.riderPhone != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        trip!.riderPhone!,
+                        style: AppText.caption(context,
+                            color: GariColors.amberDeep),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                _callRider(context, ref, widget.id),
+                            icon: const Icon(Icons.phone_outlined),
+                            label: const Text('Call'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: GariColors.nightBlue,
+                              side: const BorderSide(color: GariColors.border),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                context.push('/trip/${widget.id}/chat'),
+                            icon: const Icon(Icons.chat_bubble_outline),
+                            label: const Text('Message'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: GariColors.nightBlue,
+                              side: const BorderSide(color: GariColors.border),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     GariPrimaryButton(
                       label: s.endTrip,
                       onPressed: () async {
-                        t?.cancel();
                         try {
                           await ref
                               .read(apiProvider)
@@ -3002,12 +3062,61 @@ class _Dispute extends ConsumerWidget {
   }
 }
 
-class _Earn extends ConsumerWidget {
+class _Earn extends ConsumerStatefulWidget {
   const _Earn();
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Earn> createState() => _EarnState();
+}
+
+class _EarnState extends ConsumerState<_Earn> {
+  int period = 0; // 0 today, 1 week
+  Map<String, dynamic>? bundle;
+  String? err;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      loading = true;
+      err = null;
+    });
+    try {
+      final b = await ref.read(apiProvider).earningsBundle();
+      if (mounted) setState(() {
+        bundle = b;
+        loading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        err = drvErr(e);
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isAm = ref.watch(authProvider).locale.languageCode == 'am';
     final s = S.of(isAm);
+    final bal = Map<String, dynamic>.from(bundle?['balance'] as Map? ?? {});
+    final today = Map<String, dynamic>.from(bundle?['today'] as Map? ?? {});
+    final week = Map<String, dynamic>.from(bundle?['week'] as Map? ?? {});
+    final trips = List<dynamic>.from(bundle?['trips'] as List? ?? const []);
+    final gross = period == 0
+        ? (today['gross'] as num?)?.round() ?? 0
+        : (week['gross'] as num?)?.round() ?? 0;
+    final count = period == 0
+        ? (today['trips'] as num?)?.round() ?? 0
+        : (week['trips'] as num?)?.round() ?? 0;
+    final available = (bal['available_balance'] as num?)?.round() ??
+        ref.watch(apiProvider).balance;
+    final avg = count > 0 ? (gross / count).round() : 0;
+
     return Scaffold(
       backgroundColor: GariColors.cream,
       body: Column(
@@ -3024,15 +3133,24 @@ class _Earn extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  s.earnings,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      s.earnings,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh, color: Colors.white70),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
@@ -3041,29 +3159,46 @@ class _Earn extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
-                      _earnTab(isAm ? 'ዛሬ' : 'Today', true),
-                      _earnTab(isAm ? 'ሳምንት' : 'This week', false),
-                      _earnTab(isAm ? 'ወር' : 'This month', false),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => period = 0),
+                          child: _earnTab(isAm ? 'ዛሬ' : 'Today', period == 0),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => period = 1),
+                          child: _earnTab(
+                              isAm ? 'ሳምንት' : 'This week', period == 1),
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  '890 Br',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 38,
-                    fontWeight: FontWeight.w800,
+                if (loading)
+                  const Text('…',
+                      style: TextStyle(color: Colors.white, fontSize: 38))
+                else if (err != null)
+                  Text(err!, style: const TextStyle(color: Colors.white70))
+                else ...[
+                  Text(
+                    '$gross Br',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 38,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                Text(
-                  isAm ? '12 ጉዞ · 2ሰ 14ደ ኦንላይን' : '12 trips · 2h 14m online',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12.5,
+                  Text(
+                    isAm ? '$count ጉዞ' : '$count trips',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -3075,14 +3210,14 @@ class _Earn extends ConsumerWidget {
                   children: [
                     _earnCard(
                       Icons.layers_outlined,
-                      '74 Br',
+                      '$avg Br',
                       isAm ? 'አማካይ ጉዞ' : 'Avg. per trip',
                     ),
                     const SizedBox(width: 10),
                     _earnCard(
-                      Icons.schedule,
-                      '11 min',
-                      isAm ? 'አማካይ ጥበቃ' : 'Avg. wait',
+                      Icons.account_balance_wallet_outlined,
+                      '$available Br',
+                      isAm ? 'ሊወጣ የሚችል' : 'Available',
                     ),
                   ],
                 ),
@@ -3095,52 +3230,25 @@ class _Earn extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: GariColors.amber.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.account_balance_wallet_outlined,
-                          color: GariColors.amber400,
-                        ),
-                      ),
+                      const Icon(Icons.payments_outlined,
+                          color: GariColors.amber400),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s.availableCashOut,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              isAm
-                                  ? '640 ብር · ወዲያውኑ ቴሌብር'
-                                  : '640 Br · instant to Telebirr',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.5),
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          isAm
+                              ? '$available ብር · ወዲያውኑ ቴሌብር'
+                              : '$available Br ready to cash out',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                       GestureDetector(
                         onTap: () => context.push('/earnings/cashout'),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 9,
-                          ),
+                              horizontal: 14, vertical: 9),
                           decoration: BoxDecoration(
                             color: GariColors.amber,
                             borderRadius: BorderRadius.circular(10),
@@ -3158,21 +3266,35 @@ class _Earn extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  isAm ? 'የዛሬ ጉዞዎች' : "Today's trips",
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    color: GariColors.muted,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _txRow('Bole → Megenagna', '9:12 AM · 18 min', '+62 Br'),
-                _txRow('CMC → Summit', '8:34 AM · 24 min', '+78 Br'),
-                _txRow('Gerji → Edna Mall', '7:58 AM · 15 min', '+55 Br',
-                    last: true),
+                const SizedBox(height: 18),
+                Text(isAm ? 'የቅርብ ጉዞዎች' : 'Recent trips',
+                    style: AppText.headline(context)),
+                const SizedBox(height: 10),
+                if (trips.isEmpty)
+                  Text(isAm ? 'ጉዞ የለም' : 'No completed trips yet',
+                      style: AppText.caption(context, color: GariColors.muted)),
+                ...trips.take(10).map((raw) {
+                  final t = Map<String, dynamic>.from(raw as Map);
+                  final route =
+                      '${t['pickup_landmark'] ?? 'Pickup'} → ${t['dropoff_landmark'] ?? 'Drop'}';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: GariCard(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(route,
+                                style: AppText.body(context),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                          Text('${t['fare_total']} Br',
+                              style: AppText.headline(context)),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
               ],
             ),
           ),
@@ -3181,21 +3303,19 @@ class _Earn extends ConsumerWidget {
     );
   }
 
-  Widget _earnTab(String t, bool on) => Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: on ? GariColors.amber : Colors.transparent,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Text(
-            t,
-            style: TextStyle(
-              color: on ? const Color(0xFF1A1408) : GariColors.muted,
-              fontWeight: FontWeight.w700,
-              fontSize: 12.5,
-            ),
+  Widget _earnTab(String t, bool on) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: on ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Text(
+          t,
+          style: TextStyle(
+            color: on ? Colors.white : Colors.white54,
+            fontWeight: FontWeight.w700,
+            fontSize: 12.5,
           ),
         ),
       );
@@ -3206,94 +3326,27 @@ class _Earn extends ConsumerWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: GariColors.border, width: 1.5),
+            border: Border.all(color: GariColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: GariColors.amber, size: 18),
+              Icon(icon, size: 18, color: GariColors.amberDeep),
               const SizedBox(height: 8),
-              Text(
-                n,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                  color: GariColors.nightBlue,
-                ),
-              ),
-              Text(
-                l,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
-                  color: GariColors.muted,
-                ),
-              ),
+              Text(n,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: GariColors.nightBlue)),
+              Text(l,
+                  style: const TextStyle(
+                      fontSize: 11, color: GariColors.muted, fontWeight: FontWeight.w600)),
             ],
           ),
         ),
       );
-
-  Widget _txRow(String t, String sub, String amt, {bool last = false}) =>
-      Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: last
-              ? null
-              : const Border(bottom: BorderSide(color: GariColors.creamDim)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: GariColors.cream,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.directions_car_filled_outlined,
-                size: 18,
-                color: GariColors.nightBlue,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    t,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5,
-                      color: GariColors.nightBlue,
-                    ),
-                  ),
-                  Text(
-                    sub,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11.5,
-                      color: GariColors.muted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Text(
-              amt,
-              style: const TextStyle(
-                color: GariColors.emerald,
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      );
 }
+
 
 class _Cash extends ConsumerWidget {
   const _Cash();
@@ -3350,18 +3403,50 @@ class _Cash extends ConsumerWidget {
   }
 }
 
-class _Trips extends ConsumerWidget {
+class _Trips extends ConsumerStatefulWidget {
   const _Trips();
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Trips> createState() => _TripsState();
+}
+
+class _TripsState extends ConsumerState<_Trips> {
+  List<Map<String, dynamic>> trips = [];
+  bool loading = true;
+  String? err;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      loading = true;
+      err = null;
+    });
+    try {
+      final list = await ref.read(apiProvider).earningsTrips();
+      if (mounted) {
+        setState(() {
+          trips = list;
+          loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          err = drvErr(e);
+          loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isAm = ref.watch(authProvider).locale.languageCode == 'am';
     final s = S.of(isAm);
-    final trips = const [
-      ('Bole → Megenagna', '9:12 AM · 6.4 km', '62 Br', '★ 5.0', ['Bajaj', 'Cash']),
-      ('CMC → Summit', '8:34 AM · 8.1 km', '78 Br', '★ 4.0', ['Car', 'Wallet']),
-      ('Gerji → Edna Mall', '7:58 AM · 5.2 km', '55 Br', '★ 5.0', ['Moto', 'Wallet']),
-      ('Sarbet → Meskel Sq', '7:20 AM · 3.8 km', '40 Br', '★ 5.0', ['Bajaj', 'Cash']),
-    ];
 
     return Scaffold(
       backgroundColor: GariColors.cream,
@@ -3371,151 +3456,118 @@ class _Trips extends ConsumerWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-              child: Text(
-                s.tripHistory,
-                style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: GariColors.nightBlue,
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  _chip(isAm ? 'ዛሬ' : 'Today', true),
-                  const SizedBox(width: 8),
-                  _chip(isAm ? 'ሳምንት' : 'This week', false),
-                  const SizedBox(width: 8),
-                  _chip(isAm ? 'ሁሉም' : 'All time', false),
+                  Text(
+                    s.tripHistory,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: GariColors.nightBlue,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
                 ],
               ),
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                itemCount: trips.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (_, i) {
-                  final t = trips[i];
-                  return Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: GariColors.border, width: 1.5),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    t.$1,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      color: GariColors.nightBlue,
-                                    ),
-                                  ),
-                                  Text(
-                                    t.$2,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 11.5,
-                                      color: GariColors.muted,
-                                    ),
-                                  ),
-                                ],
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : err != null
+                      ? Center(child: Text(err!))
+                      : trips.isEmpty
+                          ? Center(
+                              child: Text(
+                                isAm ? 'ጉዞ የለም' : 'No trips yet',
+                                style: AppText.caption(context,
+                                    color: GariColors.muted),
                               ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  t.$3,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                    color: GariColors.nightBlue,
-                                  ),
-                                ),
-                                Text(
-                                  t.$4,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 11,
-                                    color: GariColors.amber,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: t.$5
-                              .map(
-                                (tag) => Container(
-                                  margin: const EdgeInsets.only(right: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                              itemCount: trips.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (_, i) {
+                                final t = trips[i];
+                                final route =
+                                    '${t['pickup_landmark'] ?? 'Pickup'} → ${t['dropoff_landmark'] ?? 'Drop'}';
+                                final km = t['distance_km'];
+                                final dist = km != null
+                                    ? '${(km as num).toStringAsFixed(1)} km'
+                                    : '';
+                                final when = t['completed_at']?.toString() ?? '';
+                                final rating = t['rider_rating'];
+                                return Container(
+                                  padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color: GariColors.cream,
-                                    borderRadius: BorderRadius.circular(7),
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                        color: GariColors.border, width: 1.5),
                                   ),
-                                  child: Text(
-                                    tag,
-                                    style: const TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: GariColors.muted,
-                                    ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(route,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 14,
+                                                  color: GariColors.nightBlue,
+                                                )),
+                                            Text(
+                                              [
+                                                if (dist.isNotEmpty) dist,
+                                                if (when.isNotEmpty)
+                                                  when.length > 16
+                                                      ? when.substring(0, 16)
+                                                      : when,
+                                              ].join(' · '),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 11.5,
+                                                color: GariColors.muted,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          Text('${t['fare_total']} Br',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 15,
+                                                color: GariColors.nightBlue,
+                                              )),
+                                          if (rating != null)
+                                            Text('★ $rating',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 11,
+                                                  color: GariColors.amber,
+                                                )),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                                );
+                              },
+                            ),
             ),
           ],
         ),
       ),
     );
   }
-
-  Widget _chip(String t, bool on) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: on ? GariColors.nightBlue : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: on ? GariColors.nightBlue : GariColors.border,
-            width: 1.5,
-          ),
-        ),
-        child: Text(
-          t,
-          style: TextStyle(
-            color: on ? GariColors.amber400 : GariColors.nightBlue,
-            fontWeight: FontWeight.w700,
-            fontSize: 12.5,
-          ),
-        ),
-      );
 }
 
 class _Prof extends ConsumerWidget {
@@ -3525,8 +3577,9 @@ class _Prof extends ConsumerWidget {
     final d = ref.watch(authProvider).driver!;
     final isAm = ref.watch(authProvider).locale.languageCode == 'am';
     final s = S.of(isAm);
-    final name = d.name ?? 'Dawit Tesfaye';
-    final initial = name.isNotEmpty ? name[0] : 'D';
+    final name = d.name?.trim().isNotEmpty == true ? d.name! : d.phone;
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'D';
+    final photo = d.photoUrl;
 
     return Scaffold(
       backgroundColor: GariColors.cream,
@@ -3544,27 +3597,37 @@ class _Prof extends ConsumerWidget {
             ),
             child: Column(
               children: [
-                Container(
-                  width: 76,
-                  height: 76,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: GariColors.amber.withValues(alpha: 0.15),
-                    border: Border.all(color: GariColors.amber, width: 2),
-                  ),
-                  child: Text(
-                    initial,
-                    style: const TextStyle(
-                      color: GariColors.amber400,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 26,
-                    ),
+                GestureDetector(
+                  onTap: () {
+                    final u = GariConfig.mediaUrl(photo);
+                    if (u.isNotEmpty) {
+                      showGariPhotoPreview(context, u);
+                    } else {
+                      context.push('/profile/edit');
+                    }
+                  },
+                  child: CircleAvatar(
+                    radius: 38,
+                    backgroundColor: GariColors.amber.withValues(alpha: 0.15),
+                    backgroundImage: () {
+                      final u = GariConfig.mediaUrl(photo);
+                      return u.isNotEmpty ? NetworkImage(u) : null;
+                    }(),
+                    child: photo == null || photo.isEmpty
+                        ? Text(
+                            initial,
+                            style: const TextStyle(
+                              color: GariColors.amber400,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 26,
+                            ),
+                          )
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  name.length < 3 ? 'Dawit Tesfaye' : name,
+                  name,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
@@ -3590,9 +3653,12 @@ class _Prof extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _badge(isAm ? 'KYC ተረጋግጧል' : 'KYC verified'),
+                    if (d.approvalStatus == ApprovalStatus.approved)
+                      _badge(isAm ? 'KYC ተረጋግጧል' : 'KYC verified'),
                     const SizedBox(width: 8),
-                    _badge(isAm ? 'ከፍተኛ ደረጃ' : 'Top rated'),
+                    _badge(
+                      '${(d.matchRadiusKm * 1000).round()} m radius',
+                    ),
                   ],
                 ),
               ],
@@ -3603,59 +3669,57 @@ class _Prof extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _section(isAm ? 'መለያ' : 'Account'),
+                _profRow(
+                  Icons.edit_outlined,
+                  isAm ? 'መገለጫ አርትዕ' : 'Edit profile & photo',
+                  trailing: const Icon(Icons.chevron_right,
+                      color: GariColors.muted, size: 18),
+                  onTap: () => context.push('/profile/edit'),
+                ),
+                _profRow(
+                  Icons.tune_rounded,
+                  isAm ? 'ቅንብሮች እና ራዲየስ' : 'Settings & job radius',
+                  trailing: const Icon(Icons.chevron_right,
+                      color: GariColors.muted, size: 18),
+                  onTap: () => context.push('/profile/settings'),
+                ),
                 _section(isAm ? 'ተሽከርካሪ' : 'Vehicle'),
                 _profRow(
                   Icons.directions_car_filled_outlined,
-                  '${d.vehicleCategory?.labelEn ?? 'Bajaj'} · ${d.vehicleColor ?? 'White'} · ${d.plate ?? 'AA-3241'}',
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                    color: GariColors.muted,
-                    size: 18,
-                  ),
-                  onTap: () {},
+                  '${d.vehicleCategory?.labelEn ?? '—'} · ${d.vehicleColor ?? '—'} · ${d.plate ?? '—'}',
+                  trailing: const Icon(Icons.chevron_right,
+                      color: GariColors.muted, size: 18),
+                  onTap: () => context.push('/documents'),
                 ),
                 _section(isAm ? 'ሰነዶች' : 'Documents'),
                 _profRow(
                   Icons.description_outlined,
-                  isAm ? 'የመንጃ ፈቃድ' : 'Driving license',
-                  trailing: _status(isAm ? 'ተረጋግጧል' : 'Verified', true),
+                  isAm ? 'ሰነዶች ማዕከል' : 'Document center',
+                  trailing: const Icon(Icons.chevron_right,
+                      color: GariColors.muted, size: 18),
                   onTap: () => context.push('/documents'),
                 ),
-                _profRow(
-                  Icons.description_outlined,
-                  isAm ? 'ኢንሹራንስ' : 'Vehicle insurance',
-                  trailing: _status(isAm ? 'በመጠባበቅ' : 'Pending', false),
-                  onTap: () => context.push('/documents'),
-                ),
-                _section(isAm ? 'መለያ' : 'Account'),
+                _section(isAm ? 'ሌላ' : 'More'),
                 _profRow(
                   Icons.account_balance_wallet_outlined,
-                  isAm ? 'የክፍያ ዘዴ' : 'Payout method',
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                    color: GariColors.muted,
-                    size: 18,
-                  ),
+                  isAm ? 'የክፍያ ዘዴ / ገንዘብ ማውጣት' : 'Payout / cash out',
+                  trailing: const Icon(Icons.chevron_right,
+                      color: GariColors.muted, size: 18),
                   onTap: () => context.push('/earnings/cashout'),
                 ),
                 _profRow(
-                  Icons.notifications_none,
-                  isAm ? 'ማሳወቂያዎች' : 'Notifications',
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                    color: GariColors.muted,
-                    size: 18,
-                  ),
-                  onTap: () {},
+                  Icons.emoji_events_outlined,
+                  isAm ? 'ተልእኮዎች' : 'Quests & incentives',
+                  trailing: const Icon(Icons.chevron_right,
+                      color: GariColors.muted, size: 18),
+                  onTap: () => context.push('/incentives'),
                 ),
                 _profRow(
                   Icons.help_outline,
                   isAm ? 'እገዛ እና ድጋፍ' : 'Help and support',
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                    color: GariColors.muted,
-                    size: 18,
-                  ),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: GariColors.muted, size: 18),
                   onTap: () => context.push('/support'),
                 ),
                 const SizedBox(height: 12),
@@ -3775,52 +3839,556 @@ class _Prof extends ConsumerWidget {
       );
 }
 
-class _Quest extends ConsumerWidget {
+class _Quest extends ConsumerStatefulWidget {
   const _Quest();
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Quest> createState() => _QuestState();
+}
+
+class _QuestState extends ConsumerState<_Quest> {
+  List<dynamic> quests = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final q = await ref.read(apiProvider).client.driverQuests();
+      if (mounted) setState(() {
+        quests = q;
+        loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAm = ref.watch(authProvider).locale.languageCode == 'am';
     return Scaffold(
       backgroundColor: GariColors.cream,
-      appBar: AppBar(title: const Text('Incentives')),
-      body: const Padding(
-        padding: EdgeInsets.all(16),
-        child: GariCard(child: Text('13/20 trips before 6pm · +150 Br')),
-      ),
+      appBar: AppBar(title: Text(isAm ? 'ተልእኮዎች' : 'Incentives')),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : quests.isEmpty
+              ? Center(
+                  child: Text(isAm ? 'ንቁ ተልእኮ የለም' : 'No active quests',
+                      style: AppText.caption(context, color: GariColors.muted)))
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: quests.map((raw) {
+                    final q = Map<String, dynamic>.from(raw as Map);
+                    final title = isAm
+                        ? (q['title_am'] ?? q['title_en'])
+                        : (q['title_en'] ?? q['title_am']);
+                    final progress = q['progress'] ?? 0;
+                    final goal = q['goal'] ?? 1;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: GariCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('$title', style: AppText.headline(context)),
+                            const SizedBox(height: 6),
+                            Text(
+                              '$progress / $goal · ${q['reward_birr']} Br',
+                              style: AppText.caption(context,
+                                  color: GariColors.muted),
+                            ),
+                            const SizedBox(height: 8),
+                            LinearProgressIndicator(
+                              value: goal > 0
+                                  ? (progress as num) / (goal as num)
+                                  : 0,
+                              color: GariColors.amber,
+                              backgroundColor: GariColors.creamDim,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
     );
   }
 }
 
-class _DocCenter extends ConsumerWidget {
+class _DocCenter extends ConsumerStatefulWidget {
   const _DocCenter();
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_DocCenter> createState() => _DocCenterState();
+}
+
+class _DocCenterState extends ConsumerState<_DocCenter> {
+  Map<String, dynamic>? data;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final d = await ref.read(apiProvider).client.listDriverDocuments();
+      if (mounted) setState(() {
+        data = d;
+        loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAm = ref.watch(authProvider).locale.languageCode == 'am';
+    final docs = List<dynamic>.from(data?['documents'] as List? ?? const []);
     return Scaffold(
       backgroundColor: GariColors.cream,
-      appBar: AppBar(title: const Text('Documents')),
-      body: const Padding(
-        padding: EdgeInsets.all(16),
-        child: GariCard(child: Text('License · expiring in 12 days')),
+      appBar: AppBar(title: Text(isAm ? 'ሰነዶች' : 'Documents')),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (docs.isEmpty)
+                  Text(isAm ? 'ሰነድ የለም' : 'No documents uploaded yet'),
+                ...docs.map((raw) {
+                  final d = Map<String, dynamic>.from(raw as Map);
+                  final ok = d['verified'] == true;
+                  final rejected = d['rejection_reason'] != null;
+                  return ListTile(
+                    title: Text('${d['doc_type']}'),
+                    subtitle: Text(rejected
+                        ? '${d['rejection_reason']}'
+                        : (ok
+                            ? (isAm ? 'ተረጋግጧል' : 'Verified')
+                            : (isAm ? 'በመጠባበቅ' : 'Pending review'))),
+                    trailing: Icon(
+                      ok
+                          ? Icons.check_circle
+                          : rejected
+                              ? Icons.cancel
+                              : Icons.schedule,
+                      color: ok
+                          ? GariColors.emerald
+                          : rejected
+                              ? GariColors.crimson
+                              : GariColors.amberDeep,
+                    ),
+                  );
+                }),
+              ],
+            ),
+    );
+  }
+}
+
+class _Support extends ConsumerStatefulWidget {
+  const _Support();
+  @override
+  ConsumerState<_Support> createState() => _SupportState();
+}
+
+class _SupportState extends ConsumerState<_Support> {
+  final subject = TextEditingController();
+  final message = TextEditingController();
+  List<dynamic> tickets = [];
+  bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    subject.dispose();
+    message.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final t = await ref.read(apiProvider).client.driverTickets();
+      if (mounted) setState(() => tickets = t);
+    } catch (_) {}
+  }
+
+  Future<void> _submit() async {
+    if (subject.text.trim().isEmpty) return;
+    setState(() => busy = true);
+    try {
+      await ref.read(apiProvider).client.createDriverTicket(
+            subject: subject.text.trim(),
+            message: message.text.trim().isEmpty ? null : message.text.trim(),
+          );
+      subject.clear();
+      message.clear();
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ticket submitted')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(drvErr(e))));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAm = ref.watch(authProvider).locale.languageCode == 'am';
+    return Scaffold(
+      backgroundColor: GariColors.cream,
+      appBar: AppBar(title: Text(S.of(isAm).support)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          TextField(
+            controller: subject,
+            decoration: InputDecoration(
+              labelText: isAm ? 'ርዕስ' : 'Subject',
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: message,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: isAm ? 'መልዕክት' : 'Message',
+            ),
+          ),
+          const SizedBox(height: 12),
+          GariPrimaryButton(
+            label: busy ? '…' : (isAm ? 'ላክ' : 'Submit ticket'),
+            onPressed: busy ? null : _submit,
+          ),
+          const SizedBox(height: 20),
+          Text(isAm ? 'የእርስዎ ትኬቶች' : 'Your tickets',
+              style: AppText.headline(context)),
+          ...tickets.map((raw) {
+            final t = Map<String, dynamic>.from(raw as Map);
+            return ListTile(
+              title: Text('${t['subject']}'),
+              subtitle: Text('${t['status']} · ${t['created_at']}'),
+            );
+          }),
+        ],
       ),
     );
   }
 }
 
-class _Support extends ConsumerWidget {
-  const _Support();
+class _EditProfile extends ConsumerStatefulWidget {
+  const _EditProfile();
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_EditProfile> createState() => _EditProfileState();
+}
+
+class _EditProfileState extends ConsumerState<_EditProfile> {
+  late final TextEditingController name;
+  bool busy = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    name = TextEditingController(
+        text: ref.read(authProvider).driver?.name ?? '');
+  }
+
+  @override
+  void dispose() {
+    name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    try {
+      final picked = await pickUpload(allowPdf: false);
+      if (picked == null) return;
+      setState(() => busy = true);
+      await ref.read(apiProvider).uploadPhoto(
+            bytes: picked.bytes,
+            filename: picked.name,
+          );
+      ref.read(authProvider.notifier).upd(ref.read(apiProvider).driver!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photo updated')),
+        );
+      }
+    } catch (e) {
+      setState(() => error = drvErr(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final d = await ref.read(apiProvider).updateProfile(
+            name: name.text.trim(),
+          );
+      ref.read(authProvider.notifier).upd(d);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile saved')),
+        );
+        context.pop();
+      }
+    } catch (e) {
+      setState(() => error = drvErr(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = ref.watch(authProvider).driver!;
+    final isAm = ref.watch(authProvider).locale.languageCode == 'am';
     return Scaffold(
       backgroundColor: GariColors.cream,
-      appBar: AppBar(title: Text(S.of(false).support)),
-      body: const Padding(
-        padding: EdgeInsets.all(16),
-        child: GariCard(
-          dark: true,
-          child: Text(
-            'SOS → Command Center + GPS share',
-            style: TextStyle(color: Colors.white),
+      appBar: AppBar(title: Text(isAm ? 'መገለጫ' : 'Edit profile')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Center(
+            child: GestureDetector(
+              onTap: busy ? null : _pickPhoto,
+              child: CircleAvatar(
+                radius: 48,
+                backgroundColor: GariColors.creamDim,
+                backgroundImage: () {
+                  final u = GariConfig.mediaUrl(d.photoUrl);
+                  return u.isNotEmpty ? NetworkImage(u) : null;
+                }(),
+                child: (d.photoUrl == null || d.photoUrl!.isEmpty)
+                    ? const Icon(Icons.add_a_photo, color: GariColors.amberDeep)
+                    : null,
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            isAm ? 'ፎቶ ለመቀየር ይንኩ' : 'Tap to change photo',
+            textAlign: TextAlign.center,
+            style: AppText.caption(context, color: GariColors.muted),
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: name,
+            decoration: InputDecoration(
+              labelText: isAm ? 'ሙሉ ስም' : 'Full name',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(d.phone, style: AppText.caption(context, color: GariColors.muted)),
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            Text(error!, style: const TextStyle(color: GariColors.crimson)),
+          ],
+          const SizedBox(height: 20),
+          GariPrimaryButton(
+            label: busy ? '…' : (isAm ? 'አስቀምጥ' : 'Save'),
+            onPressed: busy ? null : _save,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Settings extends ConsumerStatefulWidget {
+  const _Settings();
+  @override
+  ConsumerState<_Settings> createState() => _SettingsState();
+}
+
+class _SettingsState extends ConsumerState<_Settings> {
+  late double radiusKm;
+  bool busy = false;
+  bool ringEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    radiusKm = ref.read(authProvider).driver?.matchRadiusKm ?? 2.0;
+    ringEnabled =
+        ref.read(apiProvider).prefs.getBool('offer_ring') ?? true;
+  }
+
+  Future<void> _saveRadius(double v) async {
+    setState(() {
+      radiusKm = v;
+      busy = true;
+    });
+    try {
+      final d = await ref.read(apiProvider).updateProfile(matchRadiusKm: v);
+      ref.read(authProvider.notifier).upd(d);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(drvErr(e))));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAm = ref.watch(authProvider).locale.languageCode == 'am';
+    final meters = (radiusKm * 1000).round();
+    return Scaffold(
+      backgroundColor: GariColors.cream,
+      appBar: AppBar(title: Text(isAm ? 'ቅንብሮች' : 'Settings')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text(
+            isAm ? 'የስራ ራዲየስ' : 'Job search radius',
+            style: AppText.headline(context),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isAm
+                ? 'ከ500 ሜትር እስከ 2 ኪሜ — ብቻ በዚህ ርቀት ውስጥ ጉዞዎች ይቀርባሉ።'
+                : 'From 500 m to 2 km — you only get jobs within this distance.',
+            style: AppText.caption(context, color: GariColors.muted),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            meters >= 1000
+                ? '${(meters / 1000).toStringAsFixed(1)} km'
+                : '$meters m',
+            style: AppText.display(context, color: GariColors.amberDeep),
+          ),
+          Slider(
+            value: radiusKm.clamp(0.5, 2.0),
+            min: 0.5,
+            max: 2.0,
+            divisions: 15,
+            label: meters >= 1000
+                ? '${(meters / 1000).toStringAsFixed(1)} km'
+                : '$meters m',
+            onChanged: busy
+                ? null
+                : (v) => setState(() => radiusKm = v),
+            onChangeEnd: busy ? null : _saveRadius,
+          ),
+          Row(
+            children: [
+              Text('500 m',
+                  style: AppText.caption(context, color: GariColors.muted)),
+              const Spacer(),
+              Text('2 km',
+                  style: AppText.caption(context, color: GariColors.muted)),
+            ],
+          ),
+          const SizedBox(height: 28),
+          Text(isAm ? 'ቋንቋ' : 'Language', style: AppText.headline(context)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              ChoiceChip(
+                label: const Text('English'),
+                selected:
+                    ref.watch(authProvider).locale.languageCode != 'am',
+                onSelected: (_) async {
+                  await ref
+                      .read(authProvider.notifier)
+                      .setLocale(const Locale('en'));
+                  await ref
+                      .read(apiProvider)
+                      .updateProfile(languagePref: 'en');
+                },
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('አማርኛ'),
+                selected:
+                    ref.watch(authProvider).locale.languageCode == 'am',
+                onSelected: (_) async {
+                  await ref
+                      .read(authProvider.notifier)
+                      .setLocale(const Locale('am'));
+                  await ref
+                      .read(apiProvider)
+                      .updateProfile(languagePref: 'am');
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(isAm ? 'የጥያቄ ድምፅ' : 'Ring on new job offer'),
+            subtitle: Text(
+              isAm
+                  ? 'አዲስ ጉዞ ሲመጣ ድምፅ ያሰማ'
+                  : 'Play a beep when a rider request arrives',
+              style: AppText.caption(context, color: GariColors.muted),
+            ),
+            value: ringEnabled,
+            onChanged: (v) async {
+              setState(() => ringEnabled = v);
+              await ref.read(apiProvider).prefs.setBool('offer_ring', v);
+              if (!v) OfferRing.stop();
+            },
+          ),
+          const SizedBox(height: 16),
+          FutureBuilder(
+            future: ref.read(apiProvider).client.driverAnnouncements(),
+            builder: (context, snap) {
+              final list = snap.data ?? [];
+              if (list.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(isAm ? 'ማስታወቂያዎች' : 'Announcements',
+                      style: AppText.headline(context)),
+                  const SizedBox(height: 8),
+                  ...list.take(5).map((raw) {
+                    final a = Map<String, dynamic>.from(raw as Map);
+                    return GariCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${a['title']}',
+                              style: AppText.headline(context)),
+                          Text('${a['body']}',
+                              style: AppText.caption(context,
+                                  color: GariColors.muted)),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -3830,6 +4398,10 @@ class _Ref extends ConsumerWidget {
   const _Ref();
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final d = ref.watch(authProvider).driver;
+    final digits = (d?.phone ?? '0000').replaceAll(RegExp(r'\D'), '');
+    final start = (digits.length - 4).clamp(0, digits.length);
+    final code = 'GARI${digits.substring(start)}';
     return Scaffold(
       backgroundColor: GariColors.cream,
       appBar: AppBar(title: const Text('Refer')),
@@ -3838,15 +4410,226 @@ class _Ref extends ConsumerWidget {
         child: Column(
           children: [
             Text(
-              'DAWIT200',
+              code,
               style: AppText.display(context, color: GariColors.amberDeep),
             ),
             GariPrimaryButton(
               label: 'Share',
-              onPressed: () => Share.share('Join GariGo Driver DAWIT200'),
+              onPressed: () =>
+                  Share.share('Join GariGo Driver with code $code'),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TripChat extends ConsumerStatefulWidget {
+  const _TripChat({required this.id});
+  final String id;
+  @override
+  ConsumerState<_TripChat> createState() => _TripChatState();
+}
+
+class _TripChatState extends ConsumerState<_TripChat> {
+  final _ctrl = TextEditingController();
+  final _scroll = ScrollController();
+  final List<Map<String, dynamic>> _messages = [];
+  bool _loading = true;
+  bool _sending = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final client = ref.read(apiProvider).client;
+      client.joinTrip(widget.id);
+      client.socket?.off('trip_message');
+      client.socket?.on('trip_message', _onSocket);
+    });
+  }
+
+  void _onSocket(dynamic data) {
+    final m = Map<String, dynamic>.from(data as Map);
+    if (m['tripId']?.toString() != widget.id) return;
+    if (!mounted) return;
+    setState(() {
+      if (_messages.any((e) => e['id']?.toString() == m['id']?.toString())) {
+        return;
+      }
+      _messages.add(m);
+    });
+    _scrollEnd();
+  }
+
+  Future<void> _load() async {
+    try {
+      final list = await ref.read(apiProvider).client.tripMessages(widget.id);
+      if (!mounted) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(list);
+        _loading = false;
+      });
+      _scrollEnd();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = drvErr(e);
+      });
+    }
+  }
+
+  void _scrollEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent + 80,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _send() async {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      final msg =
+          await ref.read(apiProvider).client.sendTripMessage(widget.id, text);
+      _ctrl.clear();
+      if (!mounted) return;
+      setState(() {
+        if (!_messages.any((e) => e['id']?.toString() == msg['id']?.toString())) {
+          _messages.add(msg);
+        }
+        _sending = false;
+      });
+      _scrollEnd();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(drvErr(e))),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    ref.read(apiProvider).client.socket?.off('trip_message');
+    _ctrl.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAm = ref.watch(authProvider).locale.languageCode == 'am';
+    return Scaffold(
+      backgroundColor: GariColors.cream,
+      appBar: AppBar(
+        backgroundColor: GariColors.cream,
+        title: Text(isAm ? 'ከተሳፋሪ ጋር መልእክት' : 'Message rider'),
+      ),
+      body: Column(
+        children: [
+          if (_loading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_error != null)
+            Expanded(child: Center(child: Text(_error!)))
+          else
+            Expanded(
+              child: ListView.builder(
+                controller: _scroll,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                itemCount: _messages.length,
+                itemBuilder: (_, i) {
+                  final m = _messages[i];
+                  final mine = m['senderRole']?.toString() == 'driver';
+                  return Align(
+                    alignment:
+                        mine ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.sizeOf(context).width * 0.75,
+                      ),
+                      decoration: BoxDecoration(
+                        color: mine ? GariColors.nightBlue : Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: mine
+                            ? null
+                            : Border.all(color: GariColors.border, width: 1.5),
+                      ),
+                      child: Text(
+                        '${m['body']}',
+                        style: TextStyle(
+                          color: mine ? Colors.white : GariColors.nightBlue,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border:
+                            Border.all(color: GariColors.border, width: 1.5),
+                      ),
+                      child: TextField(
+                        controller: _ctrl,
+                        minLines: 1,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          hintText: isAm ? 'መልእክት ይጻፉ…' : 'Type a message…',
+                          border: InputBorder.none,
+                        ),
+                        onSubmitted: (_) => _send(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Material(
+                    color: GariColors.amber,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      onTap: _sending ? null : _send,
+                      borderRadius: BorderRadius.circular(14),
+                      child: const SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Icon(Icons.send_rounded,
+                            color: Color(0xFF1A1408)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

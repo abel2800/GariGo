@@ -10,7 +10,7 @@ import { pool } from './db/pool.js';
 import authRoutes from './routes/auth.js';
 import driverRoutes from './routes/drivers.js';
 import riderRoutes from './routes/riders.js';
-import adminRoutes from './routes/admin.js';
+import { createAdminRouter } from './routes/admin.js';
 import { createTripRouter } from './routes/trips.js';
 import { setupSockets } from './socket.js';
 import { uploadsDir } from './middleware/upload.js';
@@ -114,7 +114,7 @@ app.use('/auth', authRoutes);
 app.use('/drivers', driverRoutes);
 app.use('/riders', riderRoutes);
 app.use('/trips', createTripRouter(matching));
-app.use('/admin', adminRoutes);
+app.use('/admin', createAdminRouter(matching));
 
 app.use((err, _req, res, _next) => {
   console.error(err);

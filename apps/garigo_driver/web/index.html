@@ -31,6 +31,13 @@
 
   <title>garigo_driver</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (reg) { reg.unregister(); });
+      });
+    }
+  </script>
 </head>
 <body>
   <!--

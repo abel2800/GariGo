@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,6 +38,8 @@ class AdminSession {
     this.role,
     this.permissions = const [],
     this.hasTotp = false,
+    this.photoUrl,
+    this.phone,
   });
 
   final bool loggedIn;
@@ -47,9 +50,76 @@ class AdminSession {
   final String? role;
   final List<String> permissions;
   final bool hasTotp;
+  final String? photoUrl;
+  final String? phone;
+
+  bool get isCeo => role == 'super_admin' || permissions.contains('*');
+
+  /// Still loading /me after restore from token.
+  bool get hydrating => loggedIn && role == null;
 
   bool can(String perm) =>
       permissions.contains('*') || permissions.contains(perm);
+
+  /// Permission required for a route path (longest prefix wins).
+  static String? permForPath(String path) {
+    const rules = <(String, String)>[
+      ('/settings/staff', '*'),
+      ('/settings/roles', '*'),
+      ('/settings/security', '*'),
+      ('/settings/audit', 'audit'),
+      ('/settings/profile', ''),
+      ('/call-center', 'booking'),
+      ('/drivers', 'drivers'),
+      ('/docs', 'docs'),
+      ('/trips', 'trips'),
+      ('/tickets', 'tickets'),
+      ('/pricing', 'pricing'),
+      ('/zones', 'zones'),
+      ('/promos', 'promos'),
+      ('/finance/payouts', 'payouts'),
+      ('/finance', 'finance'),
+      ('/analytics', 'analytics'),
+      ('/kpi', 'analytics'),
+      ('/comms/push', 'push'),
+      ('/comms/announcements', 'announcements'),
+      ('/quests', 'quests'),
+      ('/riders', 'riders'),
+      ('/ops', 'ops'),
+    ];
+    for (final (prefix, perm) in rules) {
+      if (path == prefix || path.startsWith('$prefix/')) return perm;
+    }
+    return null;
+  }
+
+  bool canAccessPath(String path) {
+    if (!loggedIn) return false;
+    if (hydrating) return true;
+    final perm = permForPath(path);
+    if (perm == null || perm.isEmpty) return true;
+    if (perm == '*') return isCeo;
+    return can(perm);
+  }
+
+  String get homePath {
+    if (hydrating) return '/ops';
+    const preferred = [
+      '/ops',
+      '/call-center',
+      '/drivers/approvals',
+      '/docs',
+      '/trips',
+      '/tickets',
+      '/finance',
+      '/analytics',
+      '/settings/profile',
+    ];
+    for (final p in preferred) {
+      if (canAccessPath(p)) return p;
+    }
+    return '/settings/profile';
+  }
 }
 
 class AdminSessionNotifier extends StateNotifier<AdminSession> {
@@ -79,6 +149,8 @@ class AdminSessionNotifier extends StateNotifier<AdminSession> {
         role: me['role']?.toString(),
         permissions: List<String>.from(me['permissions'] as List? ?? const []),
         hasTotp: me['hasTotp'] == true,
+        photoUrl: me['photoUrl']?.toString(),
+        phone: me['phone']?.toString(),
       );
       _connectSocket();
     } catch (_) {
@@ -108,6 +180,8 @@ class AdminSessionNotifier extends StateNotifier<AdminSession> {
       role: admin['role']?.toString(),
       permissions: List<String>.from(admin['permissions'] as List? ?? const []),
       hasTotp: admin['hasTotp'] == true,
+      photoUrl: admin['photoUrl']?.toString(),
+      phone: admin['phone']?.toString(),
     );
     _connectSocket();
   }
@@ -183,10 +257,16 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/login',
     refreshListenable: refresh,
     redirect: (context, state) {
-      final loggedIn = ref.read(sessionProvider).loggedIn;
+      final session = ref.read(sessionProvider);
       final loc = state.matchedLocation;
-      if (!loggedIn && loc != '/login') return '/login';
-      if (loggedIn && loc == '/login') return '/ops';
+      if (!session.loggedIn && loc != '/login') return '/login';
+      if (session.loggedIn && loc == '/login') return session.homePath;
+      if (session.loggedIn &&
+          !session.hydrating &&
+          loc != '/login' &&
+          !session.canAccessPath(loc)) {
+        return session.homePath;
+      }
       return null;
     },
     routes: [
@@ -236,6 +316,15 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: '/comms/announcements',
               builder: (_, __) => const _Announce()),
           GoRoute(path: '/quests', builder: (_, __) => const _Quests()),
+          GoRoute(
+              path: '/call-center',
+              builder: (_, __) => const _CallCenter()),
+          GoRoute(
+              path: '/settings/staff',
+              builder: (_, __) => const _Staff()),
+          GoRoute(
+              path: '/settings/profile',
+              builder: (_, __) => const _MyProfile()),
           GoRoute(
               path: '/settings/roles', builder: (_, __) => const _Roles()),
           GoRoute(

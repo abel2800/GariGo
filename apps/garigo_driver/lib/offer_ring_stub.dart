@@ -1,0 +1,3 @@
+void startOfferRing() {}
+
+void stopOfferRing() {}

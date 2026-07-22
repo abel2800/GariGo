@@ -5,9 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gari_core/gari_core.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../shared/providers/providers.dart';
+import '../../pick_upload.dart';
 
 class LanguageScreen extends ConsumerWidget {
   const LanguageScreen({super.key});
@@ -34,12 +34,14 @@ class PhoneScreen extends ConsumerStatefulWidget {
 
 class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   final c = TextEditingController();
+  final phoneFocus = FocusNode();
   String? err;
   bool loading = false;
 
   @override
   void dispose() {
     c.dispose();
+    phoneFocus.dispose();
     super.dispose();
   }
 
@@ -48,16 +50,21 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
     final e164 = PhoneUtils.normalize(c.text);
     if (e164 == null) {
       setState(() => err = s.invalidPhone);
+      phoneFocus.requestFocus();
       return;
     }
     setState(() {
       loading = true;
       err = null;
     });
-    await ref.read(apiProvider).requestOtp(e164);
-    ref.read(pendingPhoneProvider.notifier).state = e164;
-    if (mounted) context.go('/auth/otp');
-    setState(() => loading = false);
+    try {
+      await ref.read(apiProvider).requestOtp(e164);
+      ref.read(pendingPhoneProvider.notifier).state = e164;
+      if (mounted) context.go('/auth/otp');
+    } catch (e) {
+      if (mounted) setState(() => err = apiError(e));
+    }
+    if (mounted) setState(() => loading = false);
   }
 
   @override
@@ -119,6 +126,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                       Expanded(
                         child: TextField(
                           controller: c,
+                          focusNode: phoneFocus,
                           keyboardType: TextInputType.phone,
                           style: const TextStyle(
                               fontWeight: FontWeight.w600, fontSize: 15),
@@ -127,6 +135,9 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                             LengthLimitingTextInputFormatter(9),
                           ],
                           onChanged: (_) => setState(() => err = null),
+                          onSubmitted: (_) {
+                            if (ok) go();
+                          },
                           decoration: InputDecoration(
                             border: InputBorder.none,
                             hintText: '9 12 345 678',
@@ -175,7 +186,17 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                       child: _SocialBtn(
                         icon: Icons.mail_outline,
                         label: isAm ? 'ኢሜይል' : 'Email',
-                        onTap: () {},
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                isAm
+                                    ? 'ኢሜይል መግባት በቅርቡ'
+                                    : 'Email sign-in coming soon — use phone for now',
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -183,7 +204,17 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                       child: _SocialBtn(
                         icon: Icons.account_balance_wallet_outlined,
                         label: 'Telebirr',
-                        onTap: () {},
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                isAm
+                                    ? 'Telebirr በቅርቡ'
+                                    : 'Telebirr sign-in coming soon — use phone for now',
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -231,26 +262,28 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                 ),
                 TextButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          isAm
-                              ? 'ስልክዎን ያስገቡ፣ OTP 123456፣ ከዚያ መመዝገብ ይቀጥላሉ'
-                              : 'Enter your phone, use OTP 123456, then complete name, photo & password',
-                        ),
-                      ),
-                    );
-                    // Focus phone field by staying on this screen
+                    ref.read(pendingSignupProvider.notifier).state = null;
+                    context.go('/auth/signup');
                   },
                   child: Text(
                     isAm ? 'አዲስ ነዎት? መለያ ፍጠር' : 'New rider? Create account',
-                    style: AppText.label(context, color: GariColors.nightBlue),
+                    style: AppText.label(context, color: GariColors.nightBlue)
+                        .copyWith(fontWeight: FontWeight.w800),
                   ),
                 ),
+                const SizedBox(height: 8),
                 Text(
                   s.demoOtp,
                   textAlign: TextAlign.center,
                   style: AppText.caption(context, color: GariColors.amberDeep),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  isAm
+                      ? 'ሹፌር መሆን ከፈለጉ የ Driver መተግበሪያን ይክፈቱ (ፖርት 5182)'
+                      : 'Want to drive? Use the Driver app at http://localhost:5182',
+                  textAlign: TextAlign.center,
+                  style: AppText.caption(context, color: GariColors.muted),
                 ),
               ],
             ),
@@ -268,121 +301,28 @@ class _RiderHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = S.of(isAm);
-    return Container(
-      height: 270,
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [GariColors.nightBlue, GariColors.navy800],
-        ),
-      ),
-      child: Stack(
-        children: [
-          CustomPaint(size: Size.infinite, painter: _RoadPainter()),
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 18, 26),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.14)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _langChip('EN', !isAm, () => onLang(false)),
-                          _langChip('አማ', isAm, () => onLang(true)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: GariColors.amber,
-                          borderRadius: BorderRadius.circular(13),
-                        ),
-                        child: const Text('G',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 19,
-                                color: Color(0xFF1A1408))),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(s.appName,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 19,
-                              fontWeight: FontWeight.w800)),
-                    ],
-                  ),
-                  const Spacer(),
-                  Text.rich(
-                    TextSpan(
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        height: 1.28,
-                      ),
-                      children: isAm
-                          ? [
-                              const TextSpan(text: 'አዲስ፣ '),
-                              TextSpan(
-                                  text: 'ጉዞዎ',
-                                  style: TextStyle(color: GariColors.amber400)),
-                              const TextSpan(text: '\nበ2 ደቂቃ ውስጥ ነው።'),
-                            ]
-                          : [
-                              const TextSpan(text: 'Addis, '),
-                              TextSpan(
-                                  text: 'your ride',
-                                  style: TextStyle(color: GariColors.amber400)),
-                              const TextSpan(text: '\nis 2 minutes away.'),
-                            ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _langChip(String t, bool on, VoidCallback tap) {
-    return GestureDetector(
-      onTap: tap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: on ? GariColors.amber : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(t,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              color: on ? const Color(0xFF1A1408) : const Color(0xFFB9C0D1),
-            )),
+    return GariBillboardHero(
+      isAm: isAm,
+      onLang: onLang,
+      brandLabel: 'GariGo',
+      headline: TextSpan(
+        children: isAm
+            ? const [
+                TextSpan(text: 'አዲስ፣ '),
+                TextSpan(
+                  text: 'ጉዞዎ',
+                  style: TextStyle(color: GariColors.amber),
+                ),
+                TextSpan(text: '\nደቂቃዎች ብቻ ነው።'),
+              ]
+            : const [
+                TextSpan(text: 'Addis, '),
+                TextSpan(
+                  text: 'your ride',
+                  style: TextStyle(color: GariColors.amber),
+                ),
+                TextSpan(text: '\nis minutes away.'),
+              ],
       ),
     );
   }
@@ -425,23 +365,6 @@ class _SocialBtn extends StatelessWidget {
   }
 }
 
-class _RoadPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = Colors.white.withValues(alpha: 0.06)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(-20, 60), Offset(size.width + 20, 120), p);
-    canvas.drawLine(Offset(-20, 180), Offset(size.width + 20, 100), p);
-    canvas.drawLine(Offset(90, -20), Offset(150, size.height + 20), p);
-    canvas.drawLine(Offset(280, -20), Offset(230, size.height + 20), p);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 class OtpScreen extends ConsumerStatefulWidget {
   const OtpScreen({super.key});
   @override
@@ -473,18 +396,43 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       await ref
           .read(authProvider.notifier)
           .login(ref.read(pendingPhoneProvider), code);
-      if (mounted) context.go('/home');
-    } catch (_) {
+      if (!mounted) return;
+
+      final pending = ref.read(pendingSignupProvider);
+      if (pending != null) {
+        await ref.read(authProvider.notifier).completeRegistration(
+              name: pending.name,
+              password: pending.password,
+              email: pending.email,
+              photoBytes: pending.photoBytes,
+              photoName: pending.photoName,
+            );
+        ref.read(pendingSignupProvider.notifier).state = null;
+        if (mounted) context.go('/home');
+        return;
+      }
+
+      final rider = ref.read(authProvider).rider;
+      final needsProfile = rider != null &&
+          !rider.isGuest &&
+          !rider.profileComplete;
+      context.go(needsProfile ? '/auth/register' : '/home');
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(S
-                  .of(ref.read(authProvider).locale.languageCode == 'am')
-                  .invalidOtp)),
+            content: Text(
+              apiError(e).isNotEmpty
+                  ? apiError(e)
+                  : S
+                      .of(ref.read(authProvider).locale.languageCode == 'am')
+                      .invalidOtp,
+            ),
+          ),
         );
       }
     }
-    setState(() => loading = false);
+    if (mounted) setState(() => loading = false);
   }
 
   @override
@@ -585,18 +533,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   Future<void> _pickPhoto() async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1200,
-      imageQuality: 85,
-    );
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    setState(() {
-      photoBytes = bytes;
-      photoName = file.name;
-    });
+    try {
+      final picked = await pickUpload(allowPdf: false);
+      if (picked == null) return;
+      setState(() {
+        photoBytes = picked.bytes;
+        photoName = picked.name;
+        error = null;
+      });
+    } catch (e) {
+      setState(() => error = apiError(e));
+    }
   }
 
   Future<void> _submit() async {
@@ -612,10 +559,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setState(() => error = 'Passwords do not match');
       return;
     }
-    if (photoBytes == null) {
-      setState(() => error = 'Add a profile photo');
-      return;
-    }
     setState(() {
       busy = true;
       error = null;
@@ -626,6 +569,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             password: password.text,
             email: email.text.trim().isEmpty ? null : email.text.trim(),
             photoBytes: photoBytes,
+            photoName: photoName ?? 'photo.jpg',
           );
       if (mounted) context.go('/home');
     } catch (e) {
@@ -648,8 +592,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         children: [
           Text(
             isAm
-                ? 'ስም፣ ፎቶ እና የይለፍ ቃል ያስፈልጋል'
-                : 'Name, photo and password are required to ride',
+                ? 'ስም እና የይለፍ ቃል ያስፈልጋል · ፎቶ አማራጭ ነው'
+                : 'Name and password are required · photo is optional',
             style: AppText.caption(context, color: GariColors.muted),
           ),
           const SizedBox(height: 20),
@@ -671,7 +615,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            isAm ? 'ፎቶ ጨምር' : 'Tap to add photo',
+            isAm ? 'ፎቶ ጨምር (አማራጭ)' : 'Tap to add photo (optional)',
             textAlign: TextAlign.center,
             style: AppText.caption(context, color: GariColors.amberDeep),
           ),
@@ -716,6 +660,467 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             onPressed: _submit,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Full signup — same visual language as guest / phone login.
+class SignupScreen extends ConsumerStatefulWidget {
+  const SignupScreen({super.key});
+  @override
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends ConsumerState<SignupScreen> {
+  final name = TextEditingController();
+  final phone = TextEditingController();
+  final email = TextEditingController();
+  final password = TextEditingController();
+  final confirm = TextEditingController();
+  List<int>? photoBytes;
+  String? photoName;
+  String? error;
+  bool busy = false;
+  bool obscurePass = true;
+  bool obscureConfirm = true;
+
+  @override
+  void dispose() {
+    name.dispose();
+    phone.dispose();
+    email.dispose();
+    password.dispose();
+    confirm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    try {
+      final picked = await pickUpload(allowPdf: false);
+      if (picked == null) return;
+      setState(() {
+        photoBytes = picked.bytes;
+        photoName = picked.name;
+        error = null;
+      });
+    } catch (e) {
+      setState(() => error = apiError(e));
+    }
+  }
+
+  Future<void> _submit() async {
+    final isAm = ref.read(authProvider).locale.languageCode == 'am';
+    final e164 = PhoneUtils.normalize(phone.text);
+    if (photoBytes == null || photoBytes!.isEmpty) {
+      setState(() => error = isAm ? 'ፎቶ ያስፈልጋል' : 'Add a profile photo');
+      return;
+    }
+    if (name.text.trim().length < 2) {
+      setState(() => error = isAm ? 'ሙሉ ስም ያስገቡ' : 'Enter your full name');
+      return;
+    }
+    if (e164 == null) {
+      setState(() =>
+          error = isAm ? 'ትክክለኛ ስልክ ያስገቡ' : 'Enter a valid Ethiopian phone');
+      return;
+    }
+    if (password.text.length < 6) {
+      setState(() => error = isAm
+          ? 'የይለፍ ቃል ቢያንስ 6 ቁምፊ'
+          : 'Password must be at least 6 characters');
+      return;
+    }
+    if (password.text != confirm.text) {
+      setState(
+          () => error = isAm ? 'የይለፍ ቃሎች አይዛመዱም' : 'Passwords do not match');
+      return;
+    }
+
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await ref.read(apiProvider).requestOtp(e164);
+      ref.read(pendingPhoneProvider.notifier).state = e164;
+      ref.read(pendingSignupProvider.notifier).state = PendingSignup(
+        name: name.text.trim(),
+        password: password.text,
+        email: email.text.trim().isEmpty ? null : email.text.trim(),
+        photoBytes: photoBytes,
+        photoName: photoName ?? 'photo.jpg',
+      );
+      if (mounted) context.go('/auth/otp');
+    } catch (e) {
+      setState(() => error = apiError(e));
+    }
+    if (mounted) setState(() => busy = false);
+  }
+
+  Widget _fieldLabel(BuildContext context, String text) {
+    return Text(
+      text.toUpperCase(),
+      style: AppText.caption(context, color: GariColors.muted).copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.4,
+      ),
+    );
+  }
+
+  Widget _authField({
+    required TextEditingController controller,
+    required String hint,
+    TextInputType? keyboardType,
+    bool obscure = false,
+    Widget? trailing,
+    List<TextInputFormatter>? formatters,
+    bool hasError = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: hasError ? GariColors.crimson : GariColors.border,
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              obscureText: obscure,
+              keyboardType: keyboardType,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              inputFormatters: formatters,
+              onChanged: (_) => setState(() => error = null),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                hintText: hint,
+                hintStyle: TextStyle(
+                  color: GariColors.muted,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAm = ref.watch(authProvider).locale.languageCode == 'am';
+    final phoneOk = phone.text.replaceAll(RegExp(r'\D'), '').length == 9;
+    final canSubmit = !busy &&
+        photoBytes != null &&
+        name.text.trim().length >= 2 &&
+        phoneOk &&
+        password.text.length >= 6 &&
+        confirm.text == password.text;
+
+    return Scaffold(
+      backgroundColor: GariColors.cream,
+      body: Column(
+        children: [
+          _SignupHero(
+            isAm: isAm,
+            onBack: () => context.go('/auth/phone'),
+            onLang: (am) async {
+              await ref
+                  .read(authProvider.notifier)
+                  .setLocale(Locale(am ? 'am' : 'en'));
+            },
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 26, 24, 32),
+              children: [
+                _fieldLabel(
+                    context, isAm ? 'የመገለጫ ፎቶ' : 'Profile photo'),
+                const SizedBox(height: 8),
+                Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  child: InkWell(
+                    onTap: busy ? null : _pickPhoto,
+                    borderRadius: BorderRadius.circular(15),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: photoBytes == null && error != null
+                              ? GariColors.crimson
+                              : GariColors.border,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: GariColors.creamDim,
+                            backgroundImage: photoBytes != null
+                                ? MemoryImage(
+                                    Uint8List.fromList(photoBytes!))
+                                : null,
+                            child: photoBytes == null
+                                ? const Icon(Icons.person_outline,
+                                    color: GariColors.muted, size: 28)
+                                : null,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  photoBytes == null
+                                      ? (isAm
+                                          ? 'ፎቶ ይምረጡ'
+                                          : 'Add a clear photo')
+                                      : (isAm
+                                          ? 'ፎቶ ተመርጧል'
+                                          : 'Photo selected'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14.5,
+                                    color: GariColors.nightBlue,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  photoBytes == null
+                                      ? (isAm
+                                          ? 'አስፈላጊ · JPG ወይም PNG'
+                                          : 'Required · JPG or PNG')
+                                      : (photoName ?? 'photo.jpg'),
+                                  style: AppText.caption(context,
+                                      color: GariColors.muted),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: GariColors.creamDim,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              photoBytes == null
+                                  ? (isAm ? 'ምረጥ' : 'Choose')
+                                  : (isAm ? 'ቀይር' : 'Change'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12.5,
+                                color: GariColors.nightBlue,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _fieldLabel(context, isAm ? 'ሙሉ ስም' : 'Full name'),
+                const SizedBox(height: 8),
+                _authField(
+                  controller: name,
+                  hint: 'Selam Abebe',
+                ),
+                const SizedBox(height: 16),
+                _fieldLabel(context, isAm ? 'ስልክ ቁጥር' : 'Mobile number'),
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: error != null && !phoneOk
+                          ? GariColors.crimson
+                          : GariColors.border,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('🇪🇹  +251',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 14.5)),
+                      Container(
+                        width: 1.5,
+                        height: 28,
+                        margin: const EdgeInsets.symmetric(horizontal: 12),
+                        color: GariColors.border,
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: phone,
+                          keyboardType: TextInputType.phone,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 15),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(9),
+                          ],
+                          onChanged: (_) => setState(() => error = null),
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            hintText: '9 12 345 678',
+                            hintStyle: TextStyle(
+                              color: GariColors.muted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _fieldLabel(
+                    context, isAm ? 'ኢሜይል (አማራጭ)' : 'Email (optional)'),
+                const SizedBox(height: 8),
+                _authField(
+                  controller: email,
+                  hint: 'you@email.com',
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+                _fieldLabel(context, isAm ? 'የይለፍ ቃል' : 'Password'),
+                const SizedBox(height: 8),
+                _authField(
+                  controller: password,
+                  hint: '••••••••',
+                  obscure: obscurePass,
+                  trailing: IconButton(
+                    icon: Icon(
+                      obscurePass
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      color: GariColors.muted,
+                      size: 20,
+                    ),
+                    onPressed: () =>
+                        setState(() => obscurePass = !obscurePass),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _fieldLabel(
+                    context, isAm ? 'የይለፍ ቃል ድገም' : 'Confirm password'),
+                const SizedBox(height: 8),
+                _authField(
+                  controller: confirm,
+                  hint: '••••••••',
+                  obscure: obscureConfirm,
+                  trailing: IconButton(
+                    icon: Icon(
+                      obscureConfirm
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      color: GariColors.muted,
+                      size: 20,
+                    ),
+                    onPressed: () =>
+                        setState(() => obscureConfirm = !obscureConfirm),
+                  ),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    error!,
+                    style: AppText.caption(context, color: GariColors.crimson),
+                  ),
+                ],
+                const SizedBox(height: 22),
+                GariPrimaryButton(
+                  label: busy
+                      ? '…'
+                      : (isAm ? 'ቀጥል' : 'Continue'),
+                  enabled: canSubmit,
+                  loading: busy,
+                  onPressed: _submit,
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  isAm
+                      ? 'ቀጣይ ደረጃ፡ OTP 123456 ያረጋግጡ'
+                      : 'Next step: verify with OTP 123456',
+                  textAlign: TextAlign.center,
+                  style: AppText.caption(context, color: GariColors.muted),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => context.go('/auth/phone'),
+                  child: Text(
+                    isAm ? 'አስቀድሞ መለያ አለዎት? ይግቡ' : 'Already have an account? Sign in',
+                    style: AppText.label(context, color: GariColors.amberDeep),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignupHero extends StatelessWidget {
+  const _SignupHero({
+    required this.isAm,
+    required this.onBack,
+    required this.onLang,
+  });
+  final bool isAm;
+  final VoidCallback onBack;
+  final ValueChanged<bool> onLang;
+
+  @override
+  Widget build(BuildContext context) {
+    return GariBillboardHero(
+      isAm: isAm,
+      onLang: onLang,
+      brandLabel: 'GariGo',
+      height: 220,
+      leading: IconButton(
+        onPressed: onBack,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+      ),
+      headline: TextSpan(
+        children: isAm
+            ? const [
+                TextSpan(text: 'መለያ '),
+                TextSpan(
+                  text: 'ፍጠር',
+                  style: TextStyle(color: GariColors.amber),
+                ),
+                TextSpan(text: '\nፎቶ፣ ስም እና ስልክ።'),
+              ]
+            : const [
+                TextSpan(text: 'Create '),
+                TextSpan(
+                  text: 'your account',
+                  style: TextStyle(color: GariColors.amber),
+                ),
+                TextSpan(text: '\nPhoto, name & phone.'),
+              ],
       ),
     );
   }

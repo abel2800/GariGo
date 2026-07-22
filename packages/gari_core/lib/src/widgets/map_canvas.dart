@@ -68,6 +68,8 @@ class GariMapCanvas extends StatefulWidget {
     this.pickup,
     this.dropoff,
     this.pins = const [],
+    this.heatPoints = const [],
+    this.showDemoOverlay = false,
     this.child,
   });
 
@@ -81,6 +83,10 @@ class GariMapCanvas extends StatefulWidget {
   final LatLngPoint? pickup;
   final LatLngPoint? dropoff;
   final List<GariMapPin> pins;
+  /// Real demand points from the API (ops live map).
+  final List<LatLngPoint> heatPoints;
+  /// When true, paints legacy demo density (off for production ops).
+  final bool showDemoOverlay;
   final Widget? child;
 
   @override
@@ -138,7 +144,11 @@ class _GariMapCanvasState extends State<GariMapCanvas> {
     }
 
     final heat = widget.mode == GariMapMode.heatmap
-        ? GariMapDefaults.heatPoints
+        ? (widget.heatPoints.isNotEmpty
+            ? widget.heatPoints
+            : (widget.showDemoOverlay
+                ? GariMapDefaults.heatPoints
+                : const <LatLngPoint>[]))
         : const <LatLngPoint>[];
 
     final allPins = <GariMapPin>[
@@ -164,7 +174,9 @@ class _GariMapCanvasState extends State<GariMapCanvas> {
           icon: Icons.my_location,
           size: 40,
         ),
-      if (widget.mode == GariMapMode.heatmap)
+      if (widget.mode == GariMapMode.heatmap &&
+          widget.showDemoOverlay &&
+          widget.pins.isEmpty)
         ...GariMapDefaults.demoDrivers.map(
           (p) => GariMapPin(
             point: p,

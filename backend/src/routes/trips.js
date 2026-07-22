@@ -8,6 +8,7 @@ import {
 } from '../services/fare.js';
 import { chargePayment } from '../services/payments.js';
 import { createMaskedSession } from '../services/voice.js';
+import { bumpDriverQuests } from '../services/quests.js';
 
 export function createTripRouter(matching) {
   const router = Router();
@@ -47,10 +48,18 @@ export function createTripRouter(matching) {
             durationMin,
             promoCode,
             stops: stops.length,
+            pickupLat,
+            pickupLng,
           }),
         );
       }
-      res.json({ distanceKm, durationMin, quotes });
+      res.json({
+        distanceKm,
+        durationMin,
+        quotes,
+        surgeMultiplier: quotes[0]?.surgeMultiplier ?? 1,
+        zone: quotes[0]?.zone ?? null,
+      });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -112,6 +121,8 @@ export function createTripRouter(matching) {
         durationMin,
         promoCode,
         stops: stops.length,
+        pickupLat,
+        pickupLng,
       });
 
       const pin = String(Math.floor(1000 + Math.random() * 9000));
@@ -157,11 +168,19 @@ export function createTripRouter(matching) {
           paymentMethod,
           cardId || null,
           pin,
-          Number(process.env.MATCH_RADIUS_START_KM || 1.5),
+          Number(process.env.MATCH_RADIUS_START_KM || 0.5),
         ],
       );
 
       const trip = rows[0];
+      if (fare.promoId) {
+        await query(
+          `UPDATE promos SET used_count = used_count + 1
+           WHERE id = $1
+             AND (usage_limit IS NULL OR used_count < usage_limit)`,
+          [fare.promoId],
+        );
+      }
       matching.start(trip.id);
       res.status(201).json({ trip });
     } catch (e) {
@@ -288,6 +307,8 @@ export function createTripRouter(matching) {
         [trip.rider_id],
       );
 
+      await bumpDriverQuests(req.user.sub);
+
       matching.io.to(`trip:${trip.id}`).emit('trip_completed', {
         tripId: trip.id,
         fareTotal: trip.fare_total,
@@ -333,21 +354,231 @@ export function createTripRouter(matching) {
     res.status(201).json({ alert: rows[0] });
   });
 
+  async function loadTripParty(tripId, user) {
+    const { rows } = await query(`SELECT * FROM trips WHERE id = $1`, [tripId]);
+    const trip = rows[0];
+    if (!trip) return { error: 'Not found', status: 404 };
+    const isRider = user.role === 'rider' && trip.rider_id === user.sub;
+    const isDriver = user.role === 'driver' && trip.driver_id === user.sub;
+    if (!isRider && !isDriver) return { error: 'Forbidden', status: 403 };
+    return { trip, isRider, isDriver };
+  }
+
+  /** Counterpart contact after match — photo, phone, vehicle details. */
+  router.get('/:id/contact', authRequired(), async (req, res) => {
+    try {
+      const loaded = await loadTripParty(req.params.id, req.user);
+      if (loaded.error) return res.status(loaded.status).json({ error: loaded.error });
+      const { trip, isRider } = loaded;
+      if (!trip.driver_id || ['requested', 'matching', 'cancelled'].includes(trip.status)) {
+        return res.status(409).json({ error: 'Trip not matched yet' });
+      }
+
+      if (isRider) {
+        const { rows } = await query(
+          `SELECT d.id, d.name, d.phone, d.photo_url, d.rating_avg, d.category,
+                  v.plate_number, v.color, v.model
+           FROM drivers d
+           LEFT JOIN vehicles v ON v.driver_id = d.id
+           WHERE d.id = $1`,
+          [trip.driver_id],
+        );
+        const d = rows[0];
+        return res.json({
+          role: 'driver',
+          contact: d
+            ? {
+                id: d.id,
+                name: d.name,
+                phone: d.phone,
+                photoUrl: d.photo_url,
+                rating: Number(d.rating_avg),
+                plate: d.plate_number,
+                vehicleColor: d.color,
+                vehicleModel: d.model,
+                category: d.category,
+              }
+            : null,
+        });
+      }
+
+      const { rows } = await query(
+        `SELECT id, name, phone, photo_url, rating_avg FROM riders WHERE id = $1`,
+        [trip.rider_id],
+      );
+      const r = rows[0];
+      return res.json({
+        role: 'rider',
+        contact: r
+          ? {
+              id: r.id,
+              name: r.name || 'Rider',
+              phone: r.phone,
+              photoUrl: r.photo_url,
+              rating: Number(r.rating_avg),
+            }
+          : null,
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/:id/messages', authRequired(), async (req, res) => {
+    try {
+      const loaded = await loadTripParty(req.params.id, req.user);
+      if (loaded.error) return res.status(loaded.status).json({ error: loaded.error });
+      const { rows } = await query(
+        `SELECT id, trip_id, sender_role, sender_id, body, created_at
+         FROM trip_messages
+         WHERE trip_id = $1
+         ORDER BY created_at ASC
+         LIMIT 200`,
+        [req.params.id],
+      );
+      res.json({
+        messages: rows.map((m) => ({
+          id: m.id,
+          tripId: m.trip_id,
+          senderRole: m.sender_role,
+          senderId: m.sender_id,
+          body: m.body,
+          createdAt: m.created_at,
+        })),
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/:id/messages', authRequired(), async (req, res) => {
+    try {
+      const loaded = await loadTripParty(req.params.id, req.user);
+      if (loaded.error) return res.status(loaded.status).json({ error: loaded.error });
+      const { trip, isRider } = loaded;
+      if (!['matched', 'arrived', 'in_progress'].includes(trip.status)) {
+        return res.status(409).json({ error: 'Chat only available during active trip' });
+      }
+      const body = String(req.body.body || '').trim();
+      if (!body || body.length > 1000) {
+        return res.status(400).json({ error: 'Message required (max 1000 chars)' });
+      }
+      const role = isRider ? 'rider' : 'driver';
+      const { rows } = await query(
+        `INSERT INTO trip_messages (trip_id, sender_role, sender_id, body)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, trip_id, sender_role, sender_id, body, created_at`,
+        [trip.id, role, req.user.sub, body],
+      );
+      const m = rows[0];
+      const payload = {
+        id: m.id,
+        tripId: m.trip_id,
+        senderRole: m.sender_role,
+        senderId: m.sender_id,
+        body: m.body,
+        createdAt: m.created_at,
+      };
+      matching.io.to(`trip:${trip.id}`).emit('trip_message', payload);
+      if (isRider && trip.driver_id) {
+        matching.io.to(`driver:${trip.driver_id}`).emit('trip_message', payload);
+      } else if (!isRider && trip.rider_id) {
+        matching.io.to(`rider:${trip.rider_id}`).emit('trip_message', payload);
+      }
+      res.status(201).json({ message: payload });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   router.post('/:id/call-session', authRequired(), async (req, res) => {
-    const session = await createMaskedSession({
-      tripId: req.params.id,
-      riderPhone: req.body.riderPhone,
-      driverPhone: req.body.driverPhone,
-    });
-    res.json(session);
+    try {
+      const loaded = await loadTripParty(req.params.id, req.user);
+      if (loaded.error) return res.status(loaded.status).json({ error: loaded.error });
+      const { trip } = loaded;
+      if (!trip.driver_id) {
+        return res.status(409).json({ error: 'Trip not matched yet' });
+      }
+      const rider = (
+        await query(`SELECT phone FROM riders WHERE id = $1`, [trip.rider_id])
+      ).rows[0];
+      const driver = (
+        await query(`SELECT phone FROM drivers WHERE id = $1`, [trip.driver_id])
+      ).rows[0];
+      const session = await createMaskedSession({
+        tripId: trip.id,
+        riderPhone: rider?.phone,
+        driverPhone: driver?.phone,
+      });
+      // Local/stub: also return direct counterpart number so apps can dial.
+      const counterpartPhone =
+        req.user.role === 'rider' ? driver?.phone : rider?.phone;
+      res.json({
+        ...session,
+        counterpartPhone: counterpartPhone || null,
+        dialDirect: process.env.VOICE_PROXY_MODE === 'stub',
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   router.get('/:id', authRequired(), async (req, res) => {
-    const { rows } = await query(`SELECT * FROM trips WHERE id = $1`, [
-      req.params.id,
-    ]);
-    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-    res.json({ trip: rows[0] });
+    try {
+      const loaded = await loadTripParty(req.params.id, req.user);
+      if (loaded.error) return res.status(loaded.status).json({ error: loaded.error });
+      const { trip, isRider } = loaded;
+      let driver = null;
+      let rider = null;
+      if (trip.driver_id) {
+        const { rows } = await query(
+          `SELECT d.id, d.name, d.phone, d.photo_url, d.rating_avg, d.category,
+                  v.plate_number, v.color, v.model
+           FROM drivers d
+           LEFT JOIN vehicles v ON v.driver_id = d.id
+           WHERE d.id = $1`,
+          [trip.driver_id],
+        );
+        const d = rows[0];
+        if (d) {
+          driver = {
+            id: d.id,
+            name: d.name,
+            phone: d.phone,
+            photoUrl: d.photo_url,
+            rating: Number(d.rating_avg),
+            plate: d.plate_number,
+            vehicleColor: d.color,
+            vehicleModel: d.model,
+            category: d.category,
+          };
+        }
+      }
+      {
+        const { rows } = await query(
+          `SELECT id, name, phone, photo_url, rating_avg FROM riders WHERE id = $1`,
+          [trip.rider_id],
+        );
+        const r = rows[0];
+        if (r) {
+          rider = {
+            id: r.id,
+            name: r.name || 'Rider',
+            phone: r.phone,
+            photoUrl: r.photo_url,
+            rating: Number(r.rating_avg),
+          };
+        }
+      }
+      res.json({
+        trip,
+        driver,
+        rider,
+        viewAs: isRider ? 'rider' : 'driver',
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   return router;

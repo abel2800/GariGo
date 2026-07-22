@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gari_api/gari_api.dart';
 import 'package:gari_core/gari_core.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../shared/providers/providers.dart';
 
@@ -273,7 +275,7 @@ class _InProgressScreenState extends ConsumerState<InProgressScreen> {
   }
 }
 
-class _DriverSheet extends StatelessWidget {
+class _DriverSheet extends ConsumerWidget {
   const _DriverSheet({
     required this.isAm,
     required this.s,
@@ -304,12 +306,54 @@ class _DriverSheet extends StatelessWidget {
   final VoidCallback? onEnd;
   final MatchedDriverInfo? driverOverride;
 
+  Future<void> _call(BuildContext context, WidgetRef ref, MatchedDriverInfo? d) async {
+    var phone = d?.phone;
+    try {
+      final session =
+          await ref.read(apiProvider).client.createCallSession(tripId);
+      phone = session['counterpartPhone']?.toString() ?? phone;
+    } catch (_) {}
+    if (phone == null || phone.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isAm ? 'ስልክ ቁጥር አልተገኘም' : 'Phone number unavailable'),
+          ),
+        );
+      }
+      return;
+    }
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(phone)),
+      );
+    }
+  }
+
+  void _openProfile(BuildContext context, MatchedDriverInfo? d) {
+    if (d == null) return;
+    final photo = GariConfig.mediaUrl(d.photoUrl);
+    showGariContactSheet(
+      context,
+      title: isAm ? 'ሹፌር' : 'Driver',
+      name: d.name,
+      photoUrl: photo.isEmpty ? null : photo,
+      phone: d.phone,
+      subtitle: '${d.rating.toStringAsFixed(1)} ★',
+      details: [
+        '${d.vehicleModel} · ${d.vehicleColor}',
+        'Plate ${d.plate}',
+      ],
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final d = driverOverride ?? trip?.driver;
-    final initial = (d?.name.isNotEmpty == true)
-        ? d!.name.characters.first.toUpperCase()
-        : 'D';
+    final photo = GariConfig.mediaUrl(d?.photoUrl);
 
     return Container(
       width: double.infinity,
@@ -362,14 +406,11 @@ class _DriverSheet extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  CircleAvatar(
+                  GariProfileAvatar(
+                    imageUrl: photo.isEmpty ? null : photo,
+                    fallbackLetter: d?.name ?? 'D',
                     radius: 25,
-                    backgroundColor: GariColors.nightBlue,
-                    child: Text(initial,
-                        style: const TextStyle(
-                            color: GariColors.amber400,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 17)),
+                    onTap: () => _openProfile(context, d),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -379,24 +420,35 @@ class _DriverSheet extends StatelessWidget {
                         Row(
                           children: [
                             Flexible(
-                              child: Text(d?.name ?? 'Dawit T.',
-                                  style: AppText.headline(context)
-                                      .copyWith(fontWeight: FontWeight.w700),
-                                  overflow: TextOverflow.ellipsis),
+                              child: GestureDetector(
+                                onTap: () => _openProfile(context, d),
+                                child: Text(d?.name ?? 'Driver',
+                                    style: AppText.headline(context)
+                                        .copyWith(fontWeight: FontWeight.w700),
+                                    overflow: TextOverflow.ellipsis),
+                              ),
                             ),
                             const SizedBox(width: 6),
                             const Icon(Icons.star,
                                 size: 13, color: GariColors.amber),
-                            Text(' ${d?.rating ?? 4.9}',
+                            Text(' ${d?.rating.toStringAsFixed(1) ?? '—'}',
                                 style: AppText.caption(context)),
                           ],
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${d?.vehicleModel ?? 'Bajaj'} · ${d?.vehicleColor ?? 'White'} · ${d?.plate ?? '3-2451'}',
+                          '${d?.vehicleModel ?? '—'} · ${d?.vehicleColor ?? '—'} · ${d?.plate ?? '—'}',
                           style: AppText.caption(context,
                               color: GariColors.muted),
                         ),
+                        if (d?.phone != null && d!.phone!.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            d.phone!,
+                            style: AppText.caption(context,
+                                color: GariColors.amberDeep),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -408,7 +460,7 @@ class _DriverSheet extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      d?.plate ?? 'AA-3241',
+                      d?.plate ?? '—',
                       style: const TextStyle(
                         color: GariColors.amber400,
                         fontSize: 11.5,
@@ -435,7 +487,7 @@ class _DriverSheet extends StatelessWidget {
                         style: AppText.caption(context,
                             color: Colors.white.withValues(alpha: 0.6))),
                     Text(
-                      trip?.riderPin.split('').join(' ') ?? '4 8 2 1',
+                      trip?.riderPin.split('').join(' ') ?? '—',
                       style: AppText.display(context,
                           color: GariColors.amber),
                     ),
@@ -450,13 +502,13 @@ class _DriverSheet extends StatelessWidget {
                     child: _ActionBtn(
                         icon: Icons.phone_outlined,
                         label: isAm ? 'ደውል' : 'Call',
-                        onTap: () {})),
+                        onTap: () => _call(context, ref, d))),
                 const SizedBox(width: 10),
                 Expanded(
                     child: _ActionBtn(
                         icon: Icons.chat_bubble_outline,
                         label: isAm ? 'መልእክት' : 'Message',
-                        onTap: () {})),
+                        onTap: () => context.push('/trip/$tripId/chat'))),
                 const SizedBox(width: 10),
                 Expanded(
                   child: _ActionBtn(
@@ -487,6 +539,14 @@ class _DriverSheet extends StatelessWidget {
                 child: Text(
                   s.cancelTrip,
                   style: AppText.label(context, color: GariColors.crimson),
+                ),
+              ),
+            if (onEnd != null)
+              TextButton(
+                onPressed: onEnd,
+                child: Text(
+                  isAm ? 'ጉዞ ጨርስ' : 'End view',
+                  style: AppText.label(context, color: GariColors.muted),
                 ),
               ),
           ],
@@ -594,8 +654,20 @@ class _RateScreenState extends ConsumerState<RateScreen> {
     final isAm = ref.watch(authProvider).locale.languageCode == 'am';
     final s = S.of(isAm);
     final q = trip?.fareQuote;
-    final driver = trip?.driver?.name ?? 'Dawit';
-    final total = q?.total ?? trip?.estimatedFare ?? 45;
+    final driver = trip?.driver?.name?.trim().isNotEmpty == true
+        ? trip!.driver!.name!
+        : (isAm ? 'ሹፌር' : 'your driver');
+    final total = q?.total ?? trip?.estimatedFare;
+    final durationMin = q?.etaMin;
+    final vehicle = trip?.driver?.vehicleModel?.trim().isNotEmpty == true
+        ? trip!.driver!.vehicleModel!
+        : (q?.category.name ?? trip?.driver?.category.name ?? '—');
+    final pickup = trip?.pickupLandmark?.trim().isNotEmpty == true
+        ? trip!.pickupLandmark!
+        : (isAm ? 'መነሻ' : 'Pickup');
+    final dropoff = trip?.destinationLandmark?.trim().isNotEmpty == true
+        ? trip!.destinationLandmark!
+        : (isAm ? 'መድረሻ' : 'Drop-off');
 
     return Scaffold(
       backgroundColor: GariColors.cream,
@@ -680,13 +752,11 @@ class _RateScreenState extends ConsumerState<RateScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(trip?.pickupLandmark ?? 'Bole Medhanialem',
+                            Text(pickup,
                                 style: AppText.headline(context)
                                     .copyWith(fontWeight: FontWeight.w700)),
                             const SizedBox(height: 22),
-                            Text(
-                                trip?.destinationLandmark ??
-                                    'Megenagna Square',
+                            Text(dropoff,
                                 style: AppText.headline(context)
                                     .copyWith(fontWeight: FontWeight.w700)),
                           ],
@@ -699,12 +769,17 @@ class _RateScreenState extends ConsumerState<RateScreen> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      _meta(context, isAm ? 'ርቀት' : 'Distance', '6.4 km'),
-                      _meta(context, isAm ? 'ጊዜ' : 'Duration', '18 min'),
-                      _meta(
+                      if (durationMin != null)
+                        _meta(
                           context,
-                          isAm ? 'ተሽከርካሪ' : 'Vehicle',
-                          trip?.driver?.vehicleModel ?? 'Bajaj'),
+                          isAm ? 'ጊዜ' : 'Duration',
+                          '$durationMin min',
+                        ),
+                      _meta(
+                        context,
+                        isAm ? 'ተሽከርካሪ' : 'Vehicle',
+                        vehicle,
+                      ),
                     ],
                   ),
                 ],
@@ -720,13 +795,15 @@ class _RateScreenState extends ConsumerState<RateScreen> {
               ),
               child: Column(
                 children: [
-                  _fareRow(context, isAm ? 'መሠረት' : 'Base fare',
-                      '${q?.base ?? 20} Br'),
-                  _fareRow(context, isAm ? 'ርቀት' : 'Distance',
-                      '${q?.distanceFee ?? 19} Br'),
-                  _fareRow(context, isAm ? 'ጊዜ' : 'Time',
-                      '${q?.timeFee ?? 6} Br'),
-                  const Divider(color: GariColors.creamDim),
+                  if (q != null) ...[
+                    _fareRow(context, isAm ? 'መሠረት' : 'Base fare',
+                        '${q.base} Br'),
+                    _fareRow(context, isAm ? 'ርቀት' : 'Distance',
+                        '${q.distanceFee} Br'),
+                    _fareRow(
+                        context, isAm ? 'ጊዜ' : 'Time', '${q.timeFee} Br'),
+                    const Divider(color: GariColors.creamDim),
+                  ],
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Row(
@@ -735,9 +812,11 @@ class _RateScreenState extends ConsumerState<RateScreen> {
                         Text(isAm ? 'ድምር' : 'Total',
                             style: AppText.title(context)
                                 .copyWith(fontWeight: FontWeight.w800)),
-                        Text('$total Br',
-                            style: AppText.title(context)
-                                .copyWith(fontWeight: FontWeight.w800)),
+                        Text(
+                          total != null ? '$total Br' : '—',
+                          style: AppText.title(context)
+                              .copyWith(fontWeight: FontWeight.w800),
+                        ),
                       ],
                     ),
                   ),

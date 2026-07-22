@@ -152,6 +152,30 @@ class GariApiClient {
     return Map<String, dynamic>.from(r.data as Map);
   }
 
+  Future<Map<String, dynamic>> tripContact(String id) async {
+    final r = await _dio.get('/trips/$id/contact');
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<Map<String, dynamic>> createCallSession(String id) async {
+    final r = await _dio.post('/trips/$id/call-session');
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> tripMessages(String id) async {
+    final r = await _dio.get('/trips/$id/messages');
+    return List<Map<String, dynamic>>.from(
+      ((r.data as Map)['messages'] as List).map(
+        (e) => Map<String, dynamic>.from(e as Map),
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> sendTripMessage(String id, String body) async {
+    final r = await _dio.post('/trips/$id/messages', data: {'body': body});
+    return Map<String, dynamic>.from((r.data as Map)['message'] as Map);
+  }
+
   Future<List<dynamic>> myTrips() async {
     final r = await _dio.get('/trips/mine');
     return List<dynamic>.from((r.data as Map)['trips'] as List);
@@ -182,6 +206,63 @@ class GariApiClient {
 
   Future<void> setOnline(bool online) async {
     await _dio.patch('/drivers/online', data: {'online': online});
+  }
+
+  Future<Map<String, dynamic>> updateDriverProfile({
+    String? name,
+    String? languagePref,
+    double? matchRadiusKm,
+  }) async {
+    final r = await _dio.patch('/drivers/profile', data: {
+      if (name != null) 'name': name,
+      if (languagePref != null) 'languagePref': languagePref,
+      if (matchRadiusKm != null) 'matchRadiusKm': matchRadiusKm,
+    });
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<Map<String, dynamic>> uploadDriverPhoto({
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: _mediaTypeForFilename(filename),
+      ),
+    });
+    final r = await _dio.post('/drivers/photo', data: form);
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<List<dynamic>> driverQuests() async {
+    final r = await _dio.get('/drivers/quests');
+    return List<dynamic>.from((r.data as Map)['quests'] as List? ?? const []);
+  }
+
+  Future<List<dynamic>> driverAnnouncements() async {
+    final r = await _dio.get('/drivers/announcements');
+    return List<dynamic>.from(
+        (r.data as Map)['announcements'] as List? ?? const []);
+  }
+
+  Future<Map<String, dynamic>> createDriverTicket({
+    required String subject,
+    String? message,
+    String category = 'general',
+  }) async {
+    final r = await _dio.post('/drivers/tickets', data: {
+      'subject': subject,
+      if (message != null) 'message': message,
+      'category': category,
+    });
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<List<dynamic>> driverTickets() async {
+    final r = await _dio.get('/drivers/tickets');
+    return List<dynamic>.from((r.data as Map)['tickets'] as List? ?? const []);
   }
 
   Future<void> pushLocation({
@@ -331,6 +412,72 @@ class GariApiClient {
     return Map<String, dynamic>.from(r.data as Map);
   }
 
+  Future<Map<String, dynamic>> updateAdminMe(Map<String, dynamic> body) async {
+    final r = await _dio.patch('/admin/me', data: body);
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<Map<String, dynamic>> uploadAdminMyPhoto({
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: filename),
+    });
+    final r = await _dio.post('/admin/me/photo', data: form);
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<Map<String, dynamic>> createAdminStaff(Map<String, dynamic> body) async {
+    final r = await _dio.post('/admin/admins', data: body);
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<Map<String, dynamic>> updateAdminStaff(
+    String id,
+    Map<String, dynamic> body,
+  ) async {
+    final r = await _dio.patch('/admin/admins/$id', data: body);
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<Map<String, dynamic>> uploadAdminStaffPhoto({
+    required String id,
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: filename),
+    });
+    final r = await _dio.post('/admin/admins/$id/photo', data: form);
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<Map<String, dynamic>> lookupRiderByPhone(String phone) async {
+    final r = await _dio.get('/admin/riders/lookup', queryParameters: {
+      'phone': phone,
+    });
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<Map<String, dynamic>> createAdminRider({
+    required String phone,
+    String? name,
+  }) async {
+    final r = await _dio.post('/admin/riders', data: {
+      'phone': phone,
+      if (name != null) 'name': name,
+    });
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  Future<Map<String, dynamic>> bookTripForCaller(
+    Map<String, dynamic> body,
+  ) async {
+    final r = await _dio.post('/admin/trips/book', data: body);
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
   Future<Map<String, dynamic>> adminSetupTotp() async {
     final r = await _dio.post('/admin/2fa/setup');
     return Map<String, dynamic>.from(r.data as Map);
@@ -469,6 +616,21 @@ class GariApiClient {
     return Map<String, dynamic>.from(r.data as Map);
   }
 
+  Future<void> updatePromo(
+    String id, {
+    bool? active,
+    int? value,
+    int? usageLimit,
+    String? discountType,
+  }) async {
+    await _dio.patch('/admin/promos/$id', data: {
+      if (active != null) 'active': active,
+      if (value != null) 'value': value,
+      if (usageLimit != null) 'usageLimit': usageLimit,
+      if (discountType != null) 'discountType': discountType,
+    });
+  }
+
   Future<Map<String, dynamic>> financeSummary() async {
     final r = await _dio.get('/admin/finance/summary');
     return Map<String, dynamic>.from(r.data as Map);
@@ -477,6 +639,21 @@ class GariApiClient {
   Future<List<dynamic>> cashDebt() async {
     final r = await _dio.get('/admin/finance/cash-debt');
     return List<dynamic>.from((r.data as Map)['drivers'] as List);
+  }
+
+  Future<Map<String, dynamic>> settleCashDebt(
+    String driverId, {
+    int? amount,
+    bool fromBalance = true,
+  }) async {
+    final r = await _dio.post(
+      '/admin/finance/cash-debt/$driverId/settle',
+      data: {
+        if (amount != null) 'amount': amount,
+        'fromBalance': fromBalance,
+      },
+    );
+    return Map<String, dynamic>.from(r.data as Map);
   }
 
   Future<Map<String, dynamic>> payoutBatch() async {
@@ -577,11 +754,19 @@ class GariApiClient {
     socket = io.io(
       GariConfig.socketUrl,
       io.OptionBuilder()
-          .setTransports(['websocket'])
+          .setTransports(['websocket', 'polling'])
           .enableAutoConnect()
+          .enableReconnection()
           .setAuth({'role': role, 'userId': userId})
           .build(),
     );
+  }
+
+  Future<Map<String, dynamic>?> driverPendingOffer() async {
+    final r = await _dio.get('/drivers/pending-offer');
+    final offer = (r.data as Map)['offer'];
+    if (offer == null) return null;
+    return Map<String, dynamic>.from(offer as Map);
   }
 
   void disconnectSocket() {

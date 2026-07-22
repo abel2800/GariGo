@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gari_api/gari_api.dart';
 import 'package:gari_core/gari_core.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -82,32 +83,80 @@ class ReceiptScreen extends ConsumerWidget {
     final isAm = ref.watch(authProvider).locale.languageCode == 'am';
     return Scaffold(
       appBar: AppBar(title: Text(isAm ? 'ደረሰኝ' : 'Receipt')),
-      body: ListView(
-        padding: const EdgeInsets.all(GariSpacing.xl),
-        children: [
-          GariCard(
-            child: Column(
-              children: [
-                Text('Trip #$id', style: AppText.title(context)),
-                const Divider(),
-                _r(context, 'Base', '40 Br'),
-                _r(context, 'Distance', '30 Br'),
-                _r(context, 'Time', '15 Br'),
-                _r(context, 'Total', '85 Br'),
-              ],
-            ),
-          ),
-          const SizedBox(height: GariSpacing.lg),
-          GariSecondaryButton(
-            label: isAm ? 'ችግር ሪፖርት' : 'Report an issue',
-            onPressed: () => context.push('/support'),
-          ),
-          const SizedBox(height: GariSpacing.sm),
-          GariSecondaryButton(
-            label: isAm ? 'የጠፋ ነገር' : 'Lost something?',
-            onPressed: () => context.push('/support'),
-          ),
-        ],
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: ref.read(apiProvider).client.getTrip(id),
+        builder: (context, snap) {
+          if (snap.hasError) {
+            return Center(child: Text(apiError(snap.error!)));
+          }
+          if (!snap.hasData) {
+            return const Center(
+              child: CircularProgressIndicator(color: GariColors.amber),
+            );
+          }
+          final t = snap.data!;
+          final fare = t['fare_total'] ?? t['fareTotal'] ?? t['estimated_fare'];
+          final base = t['fare_base'] ?? t['base_fare'];
+          final distFee = t['fare_distance'] ?? t['distance_fee'];
+          final timeFee = t['fare_time'] ?? t['time_fee'];
+          final pickup = t['pickup_landmark']?.toString() ?? '—';
+          final drop = t['dropoff_landmark']?.toString() ?? '—';
+          final cat = t['vehicle_category']?.toString() ?? '';
+          final status = t['status']?.toString() ?? '';
+
+          return ListView(
+            padding: const EdgeInsets.all(GariSpacing.xl),
+            children: [
+              GariCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Trip #${id.length > 8 ? id.substring(0, 8) : id}',
+                      style: AppText.title(context),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$pickup → $drop',
+                      style: AppText.body(context, color: GariColors.muted),
+                    ),
+                    if (cat.isNotEmpty || status.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        [if (cat.isNotEmpty) cat, if (status.isNotEmpty) status]
+                            .join(' · '),
+                        style:
+                            AppText.caption(context, color: GariColors.muted),
+                      ),
+                    ],
+                    const Divider(),
+                    if (base != null)
+                      _r(context, isAm ? 'መሠረት' : 'Base', '$base Br'),
+                    if (distFee != null)
+                      _r(context, isAm ? 'ርቀት' : 'Distance', '$distFee Br'),
+                    if (timeFee != null)
+                      _r(context, isAm ? 'ጊዜ' : 'Time', '$timeFee Br'),
+                    _r(
+                      context,
+                      isAm ? 'ድምር' : 'Total',
+                      fare != null ? '$fare Br' : '—',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: GariSpacing.lg),
+              GariSecondaryButton(
+                label: isAm ? 'ችግር ሪፖርት' : 'Report an issue',
+                onPressed: () => context.push('/support'),
+              ),
+              const SizedBox(height: GariSpacing.sm),
+              GariSecondaryButton(
+                label: isAm ? 'የጠፋ ነገር' : 'Lost something?',
+                onPressed: () => context.push('/support'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1044,11 +1093,13 @@ class ProfileScreen extends ConsumerWidget {
             dark: true,
             child: Row(
               children: [
-                CircleAvatar(
+                GariProfileAvatar(
+                  imageUrl: () {
+                    final u = GariConfig.mediaUrl(r?.photoUrl);
+                    return u.isEmpty ? null : u;
+                  }(),
+                  fallbackLetter: r?.name ?? 'G',
                   radius: 28,
-                  backgroundColor: GariColors.amber,
-                  child: Text((r?.name ?? 'G').characters.first,
-                      style: AppText.title(context, color: GariColors.nightBlue)),
                 ),
                 const SizedBox(width: GariSpacing.lg),
                 Column(

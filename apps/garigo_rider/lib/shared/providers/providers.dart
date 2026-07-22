@@ -170,12 +170,16 @@ class RiderApi {
     rider = riderFromJson(Map<String, dynamic>.from(res['rider'] as Map))
         .copyWith(hasPassword: true);
     if (photoBytes != null && photoBytes.isNotEmpty) {
-      final photo = await client.uploadRiderPhoto(
-        bytes: photoBytes,
-        filename: photoName,
-      );
-      rider = riderFromJson(Map<String, dynamic>.from(photo['rider'] as Map))
-          .copyWith(hasPassword: true);
+      try {
+        final photo = await client.uploadRiderPhoto(
+          bytes: photoBytes,
+          filename: photoName,
+        );
+        rider = riderFromJson(Map<String, dynamic>.from(photo['rider'] as Map))
+            .copyWith(hasPassword: true);
+      } catch (_) {
+        // Profile is already created; photo can be added later.
+      }
     }
     wallet = rider!.walletBalance;
     return rider!;
@@ -357,12 +361,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String password,
     String? email,
     List<int>? photoBytes,
+    String photoName = 'photo.jpg',
   }) async {
     final r = await api.completeRegistration(
       name: name,
       password: password,
       email: email,
       photoBytes: photoBytes,
+      photoName: photoName,
     );
     state = state.copyWith(rider: r);
   }
@@ -384,6 +390,23 @@ final authProvider =
     StateNotifierProvider<AuthNotifier, AuthState>((ref) => AuthNotifier(ref.watch(apiProvider)));
 
 final pendingPhoneProvider = StateProvider<String>((_) => '');
+
+class PendingSignup {
+  const PendingSignup({
+    required this.name,
+    required this.password,
+    this.email,
+    this.photoBytes,
+    this.photoName = 'photo.jpg',
+  });
+  final String name;
+  final String password;
+  final String? email;
+  final List<int>? photoBytes;
+  final String photoName;
+}
+
+final pendingSignupProvider = StateProvider<PendingSignup?>((_) => null);
 
 final homeQuotesProvider = FutureProvider<List<FareQuote>>((ref) async {
   try {
@@ -554,6 +577,7 @@ class TripNotifier extends StateNotifier<ActiveTrip?> {
       state = state?.copyWith(
         status: TripStatus.matched,
         driver: MatchedDriverInfo(
+          id: d['id']?.toString(),
           name: d['name']?.toString() ?? 'Driver',
           rating: (d['rating'] as num?)?.toDouble() ?? 4.9,
           plate: d['plate']?.toString() ?? '—',
@@ -561,6 +585,8 @@ class TripNotifier extends StateNotifier<ActiveTrip?> {
           vehicleModel: d['vehicleModel']?.toString() ?? '—',
           etaMin: (m['etaMin'] as num?)?.round() ?? q.etaMin,
           category: _cat(d['category'] ?? q.category.name),
+          photoUrl: d['photoUrl']?.toString() ?? d['photo_url']?.toString(),
+          phone: d['phone']?.toString(),
         ),
       );
       if (m['riderPin'] != null) {

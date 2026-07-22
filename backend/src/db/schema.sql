@@ -115,6 +115,7 @@ ALTER TABLE drivers ADD COLUMN IF NOT EXISTS photo_url TEXT;
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS tin_number TEXT;
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS business_reg_number TEXT;
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS is_vehicle_owner BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS match_radius_km NUMERIC(4,2) NOT NULL DEFAULT 2.00;
 
 CREATE INDEX IF NOT EXISTS drivers_online_location_idx
   ON drivers (lat, lng)
@@ -244,6 +245,17 @@ CREATE INDEX IF NOT EXISTS trips_status_idx ON trips (status);
 CREATE INDEX IF NOT EXISTS trips_rider_idx ON trips (rider_id);
 CREATE INDEX IF NOT EXISTS trips_driver_idx ON trips (driver_id);
 
+-- In-trip chat (rider ↔ driver)
+CREATE TABLE IF NOT EXISTS trip_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  sender_role TEXT NOT NULL CHECK (sender_role IN ('rider', 'driver')),
+  sender_id UUID NOT NULL,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS trip_messages_trip_idx ON trip_messages (trip_id, created_at);
+
 -- Payments
 CREATE TABLE IF NOT EXISTS payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -319,7 +331,8 @@ CREATE TABLE IF NOT EXISTS promos (
   valid_to TIMESTAMPTZ,
   usage_limit INTEGER,
   used_count INTEGER NOT NULL DEFAULT 0,
-  zone_restriction TEXT
+  zone_restriction TEXT,
+  active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 -- Zones
@@ -328,7 +341,11 @@ CREATE TABLE IF NOT EXISTS zones (
   name TEXT NOT NULL,
   polygon JSONB,
   surge_multiplier NUMERIC(4,2) NOT NULL DEFAULT 1.00,
-  base_fare_overrides JSONB NOT NULL DEFAULT '{}'
+  base_fare_overrides JSONB NOT NULL DEFAULT '{}',
+  center_lat DOUBLE PRECISION,
+  center_lng DOUBLE PRECISION,
+  radius_km NUMERIC(6,2) DEFAULT 3.0,
+  active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 -- Fare config
@@ -379,6 +396,14 @@ CREATE TABLE IF NOT EXISTS admin_users (
   totp_secret TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS photo_url TEXT;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS booked_by_admin_id UUID REFERENCES admin_users(id);
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS booking_channel TEXT NOT NULL DEFAULT 'app';
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS booking_notes TEXT;
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -423,3 +448,27 @@ CREATE TABLE IF NOT EXISTS driver_locations (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS driver_locations_time_idx ON driver_locations (driver_id, recorded_at DESC);
+
+-- Payout ledger (real records when admin processes balances)
+CREATE TABLE IF NOT EXISTS payout_ledger (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  driver_id UUID NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+  amount INTEGER NOT NULL,
+  method TEXT NOT NULL DEFAULT 'internal',
+  status TEXT NOT NULL DEFAULT 'paid',
+  processed_by UUID REFERENCES admin_users(id),
+  meta JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Push campaign history
+CREATE TABLE IF NOT EXISTS push_campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  audience TEXT NOT NULL,
+  targeted INTEGER NOT NULL DEFAULT 0,
+  sent INTEGER NOT NULL DEFAULT 0,
+  created_by UUID REFERENCES admin_users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

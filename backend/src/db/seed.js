@@ -42,10 +42,45 @@ async function seed() {
   );
 
   const hash = await bcrypt.hash('admin123', 10);
+  // Keep exactly one CEO. Soft-remove others (FK-safe), then hard-delete if possible.
   await query(
-    `INSERT INTO admin_users (email, password_hash, name, role)
-     VALUES ('ops@garigo.et', $1, 'Super Admin', 'super_admin')
-     ON CONFLICT (email) DO NOTHING`,
+    `UPDATE admin_users SET active = FALSE, updated_at = NOW()
+     WHERE email <> 'ops@garigo.et'`,
+  );
+  await query(
+    `UPDATE trips SET booked_by_admin_id = NULL
+     WHERE booked_by_admin_id IN (
+       SELECT id FROM admin_users WHERE email <> 'ops@garigo.et'
+     )`,
+  );
+  await query(
+    `UPDATE audit_logs SET admin_id = NULL
+     WHERE admin_id IN (
+       SELECT id FROM admin_users WHERE email <> 'ops@garigo.et'
+     )`,
+  );
+  await query(
+    `UPDATE payout_ledger SET processed_by = NULL
+     WHERE processed_by IN (
+       SELECT id FROM admin_users WHERE email <> 'ops@garigo.et'
+     )`,
+  );
+  await query(
+    `UPDATE push_campaigns SET created_by = NULL
+     WHERE created_by IN (
+       SELECT id FROM admin_users WHERE email <> 'ops@garigo.et'
+     )`,
+  );
+  await query(`DELETE FROM admin_users WHERE email <> 'ops@garigo.et'`);
+  await query(
+    `INSERT INTO admin_users (email, password_hash, name, role, active)
+     VALUES ('ops@garigo.et', $1, 'CEO / Super Admin', 'super_admin', TRUE)
+     ON CONFLICT (email) DO UPDATE SET
+       password_hash = EXCLUDED.password_hash,
+       name = EXCLUDED.name,
+       role = 'super_admin',
+       active = TRUE,
+       updated_at = NOW()`,
     [hash],
   );
 
@@ -88,23 +123,38 @@ async function seed() {
   );
 
   const zones = [
-    ['Bole', 1.0],
-    ['CMC', 1.1],
-    ['Ayat', 1.0],
-    ['Gerji', 1.2],
-    ['Summit', 1.0],
-    ['Yeka', 1.0],
+    ['Bole', 1.0, 9.01, 38.78, 3.5],
+    ['CMC', 1.1, 9.015, 38.83, 3.0],
+    ['Ayat', 1.0, 9.04, 38.86, 3.5],
+    ['Gerji', 1.2, 8.995, 38.81, 2.5],
+    ['Summit', 1.0, 9.02, 38.85, 3.0],
+    ['Yeka', 1.0, 9.035, 38.79, 3.0],
   ];
-  for (const [name, surge] of zones) {
+  for (const [name, surge, lat, lng, radius] of zones) {
     await query(
-      `INSERT INTO zones (name, surge_multiplier)
-       SELECT $1, $2
+      `INSERT INTO zones (name, surge_multiplier, center_lat, center_lng, radius_km, active)
+       SELECT $1, $2, $3, $4, $5, TRUE
        WHERE NOT EXISTS (SELECT 1 FROM zones WHERE name = $1)`,
-      [name, surge],
+      [name, surge, lat, lng, radius],
+    );
+    await query(
+      `UPDATE zones SET
+         center_lat = COALESCE(center_lat, $2),
+         center_lng = COALESCE(center_lng, $3),
+         radius_km = COALESCE(radius_km, $4),
+         active = COALESCE(active, TRUE)
+       WHERE name = $1`,
+      [name, lat, lng, radius],
     );
   }
 
-  console.log('[seed] Done. Admin: ops@garigo.et / admin123');
+  await query(
+    `INSERT INTO promos (code, discount_type, value, usage_limit, active)
+     SELECT 'WELCOME50', 'fixed', 50, 1000, TRUE
+     WHERE NOT EXISTS (SELECT 1 FROM promos WHERE code = 'WELCOME50')`,
+  );
+
+  console.log('[seed] Done. CEO only: ops@garigo.et / admin123 (hire workers from Hire workers)');
   process.exit(0);
 }
 
